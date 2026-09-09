@@ -1,0 +1,20 @@
+{
+  "client": {
+    "room.command": "roomCommand",
+    "game.command": "gameCommand",
+    "session.subscribe": "subscribe",
+    "game.sync": "sync",
+    "game.version.request": "versionRequest",
+    "auth.refresh": "authRefresh"
+  },
+  "server": {
+    "server.hello": "serverHello",
+    "room.snapshot": "roomSnapshot",
+    "game.snapshot": "gameSnapshot",
+    "game.delta": "gameDelta",
+    "game.version": "gameVersion",
+    "presence.update": "presence",
+    "session.error": "error",
+    "server.restarting": "restarting"
+  }
+}

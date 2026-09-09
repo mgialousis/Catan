@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+.local
+**/node_modules
+**/dist
+apps/mobile
+docs
+supabase/.temp
+supabase/.branches
+**/*.log

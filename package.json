@@ -1,0 +1,35 @@
+{
+  "name": "island-table",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/server",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.20.0 <23"
+  },
+  "scripts": {
+    "build": "npm run build -w @island/protocol && npm run build -w @island/game-engine && npm run build -w @island/server",
+    "typecheck": "npm run build",
+    "test": "npm run build && node --test packages/protocol/test/*.test.mjs packages/game-engine/test/*.test.mjs apps/server/test/*.test.mjs",
+    "test:local": "npm run build && node --test --test-concurrency=1 tests/local/*.test.mjs",
+    "dev:server": "npm run build && node --env-file=.env apps/server/dist/main.js",
+    "protocol:sync": "node scripts/sync-protocol.mjs",
+    "local:start": "node scripts/start-local.mjs",
+    "local:stop": "supabase stop",
+    "local:configure": "node scripts/configure-local.mjs",
+    "local:migrate": "supabase migration up --local",
+    "test:web": "node scripts/check-web.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.20.1",
+    "socket.io-client": "4.8.3",
+    "supabase": "2.117.0",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "multer": "2.3.0"
+  }
+}

@@ -1,0 +1,43 @@
+# Future deployment definitions only. Phase 1 uses local services.
+services:
+  - type: web
+    name: island-table-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./apps/server/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: "off"
+    healthCheckPath: /health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_TLS
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: WEB_ORIGINS
+        sync: false
+  - type: web
+    name: island-table-web
+    runtime: static
+    autoDeployTrigger: "off"
+    buildCommand: bash scripts/build-web.sh
+    staticPublishPath: ./apps/mobile/build/web
+    envVars:
+      - key: NODE_VERSION
+        value: 22.20.0
+      - key: API_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache

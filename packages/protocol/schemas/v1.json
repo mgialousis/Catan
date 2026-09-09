@@ -1,0 +1,3227 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://island-table.invalid/protocol/v1",
+  "definitions": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "resourceType": {
+      "type": "string",
+      "enum": [
+        "brick",
+        "lumber",
+        "wool",
+        "grain",
+        "ore"
+      ]
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "brick": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        },
+        "lumber": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        },
+        "wool": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        },
+        "grain": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        },
+        "ore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        }
+      },
+      "required": [
+        "brick",
+        "lumber",
+        "wool",
+        "grain",
+        "ore"
+      ],
+      "additionalProperties": false
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "SETUP_SETTLEMENT",
+        "SETUP_ROAD",
+        "AWAIT_ROLL",
+        "DISCARD_REQUIRED",
+        "ROBBER_MOVE",
+        "ROBBER_VICTIM",
+        "ACTION",
+        "ROAD_BUILDING",
+        "COMPLETE"
+      ]
+    },
+    "roomStatus": {
+      "type": "string",
+      "enum": [
+        "LOBBY",
+        "ACTIVE",
+        "PAUSED",
+        "FINISHED",
+        "ABANDONED",
+        "EXPIRED"
+      ]
+    },
+    "colour": {
+      "type": "string",
+      "enum": [
+        "RED",
+        "BLUE",
+        "WHITE",
+        "ORANGE"
+      ]
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "maxPlayers": {
+          "const": 4
+        },
+        "turnLimitSeconds": {
+          "enum": [
+            null,
+            60,
+            120,
+            180
+          ]
+        },
+        "boardMode": {
+          "const": "STANDARD_RANDOM"
+        },
+        "rulesVersion": {
+          "const": "base-2020-v1"
+        }
+      },
+      "required": [
+        "maxPlayers",
+        "turnLimitSeconds",
+        "boardMode",
+        "rulesVersion"
+      ],
+      "additionalProperties": false
+    },
+    "nickname": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 160,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "handshake": {
+      "type": "object",
+      "properties": {
+        "accessToken": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "protocolVersion": {
+          "const": 1
+        },
+        "clientInstanceId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "required": [
+        "accessToken",
+        "protocolVersion",
+        "clientInstanceId"
+      ],
+      "additionalProperties": false
+    },
+    "serverHello": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "serverTime": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 40
+        },
+        "heartbeatIntervalMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000
+        },
+        "maxCommandBytes": {
+          "const": 16384
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "serverTime",
+        "heartbeatIntervalMs",
+        "maxCommandBytes"
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "UNAUTHENTICATED",
+            "TOKEN_EXPIRED",
+            "FORBIDDEN",
+            "ROOM_UNAVAILABLE",
+            "ROOM_FULL",
+            "NAME_TAKEN",
+            "GAME_ALREADY_STARTED",
+            "STALE_VERSION",
+            "WRONG_PHASE",
+            "NOT_YOUR_TURN",
+            "ILLEGAL_PLACEMENT",
+            "INSUFFICIENT_RESOURCES",
+            "BANK_UNAVAILABLE",
+            "CARD_NOT_PLAYABLE",
+            "TRADE_UNAVAILABLE",
+            "DEADLINE_EXCEEDED",
+            "GAME_PAUSED",
+            "GAME_FINISHED",
+            "COMMAND_ID_REUSED",
+            "RECEIPT_EXPIRED",
+            "RATE_LIMITED",
+            "PROTOCOL_UNSUPPORTED",
+            "SERVICE_UNAVAILABLE",
+            "INVALID_PAYLOAD",
+            "NOT_IMPLEMENTED"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "additionalProperties": false
+    },
+    "CREATE_ROOM": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "null"
+        },
+        "expectedVersion": {
+          "type": "null"
+        },
+        "expectedPhaseId": {
+          "type": "null"
+        },
+        "type": {
+          "const": "CREATE_ROOM"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "nickname": {
+              "$ref": "#/definitions/nickname"
+            },
+            "settings": {
+              "$ref": "#/definitions/settings"
+            }
+          },
+          "required": [
+            "nickname",
+            "settings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "JOIN_ROOM": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "null"
+        },
+        "expectedVersion": {
+          "type": "null"
+        },
+        "expectedPhaseId": {
+          "type": "null"
+        },
+        "type": {
+          "const": "JOIN_ROOM"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "nickname": {
+              "$ref": "#/definitions/nickname"
+            },
+            "invitationCode": {
+              "type": "string",
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{10}$"
+            }
+          },
+          "required": [
+            "nickname",
+            "invitationCode"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "SET_PROFILE": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "null"
+        },
+        "type": {
+          "const": "SET_PROFILE"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "nickname": {
+              "$ref": "#/definitions/nickname"
+            },
+            "colour": {
+              "$ref": "#/definitions/colour"
+            }
+          },
+          "required": [
+            "nickname",
+            "colour"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "SET_READY": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "null"
+        },
+        "type": {
+          "const": "SET_READY"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "ready": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "ready"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "UPDATE_SETTINGS": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "null"
+        },
+        "type": {
+          "const": "UPDATE_SETTINGS"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "turnLimitSeconds": {
+              "enum": [
+                null,
+                60,
+                120,
+                180
+              ]
+            },
+            "boardMode": {
+              "const": "STANDARD_RANDOM"
+            }
+          },
+          "required": [
+            "turnLimitSeconds",
+            "boardMode"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "ROTATE_INVITATION": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "null"
+        },
+        "type": {
+          "const": "ROTATE_INVITATION"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "LEAVE_LOBBY": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "null"
+        },
+        "type": {
+          "const": "LEAVE_LOBBY"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "START_GAME": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "null"
+        },
+        "type": {
+          "const": "START_GAME"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "CREATE_REMATCH": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "null"
+        },
+        "type": {
+          "const": "CREATE_REMATCH"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "PLACE_SETUP_SETTLEMENT": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "PLACE_SETUP_SETTLEMENT"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "vertexId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "vertexId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "BUILD_SETTLEMENT": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "BUILD_SETTLEMENT"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "vertexId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "vertexId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "BUILD_CITY": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "BUILD_CITY"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "vertexId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "vertexId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "PLACE_SETUP_ROAD": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "PLACE_SETUP_ROAD"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "edgeId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "edgeId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "BUILD_ROAD": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "BUILD_ROAD"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "edgeId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "edgeId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "PLACE_FREE_ROAD": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "PLACE_FREE_ROAD"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "edgeId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "edgeId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "ROLL_DICE": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "ROLL_DICE"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "BUY_DEVELOPMENT_CARD": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "BUY_DEVELOPMENT_CARD"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "FINISH_FREE_ROADS": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "FINISH_FREE_ROADS"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "END_TURN": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "END_TURN"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "PAUSE_GAME": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "PAUSE_GAME"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "RESUME_GAME": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "RESUME_GAME"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "ABANDON_GAME": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "ABANDON_GAME"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "DISCARD_RESOURCES": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "DISCARD_RESOURCES"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "resources": {
+              "$ref": "#/definitions/resources"
+            }
+          },
+          "required": [
+            "resources"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "MOVE_ROBBER": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "MOVE_ROBBER"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "hexId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "hexId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "CHOOSE_ROBBER_VICTIM": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "CHOOSE_ROBBER_VICTIM"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "victimPlayerId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          "required": [
+            "victimPlayerId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "BANK_TRADE": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "BANK_TRADE"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "giveType": {
+              "$ref": "#/definitions/resourceType"
+            },
+            "receiveType": {
+              "$ref": "#/definitions/resourceType"
+            },
+            "receiveCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 19
+            }
+          },
+          "required": [
+            "giveType",
+            "receiveType",
+            "receiveCount"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "PROPOSE_TRADE": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "PROPOSE_TRADE"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "targetPlayerId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "give": {
+              "$ref": "#/definitions/resources"
+            },
+            "receive": {
+              "$ref": "#/definitions/resources"
+            }
+          },
+          "required": [
+            "targetPlayerId",
+            "give",
+            "receive"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "ACCEPT_TRADE": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "ACCEPT_TRADE"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "offerId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "offerRevision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "offerId",
+            "offerRevision"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "DECLINE_TRADE": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "DECLINE_TRADE"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "offerId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "offerRevision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "offerId",
+            "offerRevision"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "CANCEL_TRADE": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "CANCEL_TRADE"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "offerId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "offerRevision": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "offerId",
+            "offerRevision"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "PLAY_DEVELOPMENT_CARD": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "PLAY_DEVELOPMENT_CARD"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "cardId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            "choice": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {},
+                  "required": [],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "resourceType": {
+                      "$ref": "#/definitions/resourceType"
+                    }
+                  },
+                  "required": [
+                    "resourceType"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "resources": {
+                      "$ref": "#/definitions/resources"
+                    }
+                  },
+                  "required": [
+                    "resources"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "cardId",
+            "choice"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "roomCommand": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/CREATE_ROOM"
+        },
+        {
+          "$ref": "#/definitions/JOIN_ROOM"
+        },
+        {
+          "$ref": "#/definitions/SET_PROFILE"
+        },
+        {
+          "$ref": "#/definitions/SET_READY"
+        },
+        {
+          "$ref": "#/definitions/UPDATE_SETTINGS"
+        },
+        {
+          "$ref": "#/definitions/ROTATE_INVITATION"
+        },
+        {
+          "$ref": "#/definitions/LEAVE_LOBBY"
+        },
+        {
+          "$ref": "#/definitions/START_GAME"
+        },
+        {
+          "$ref": "#/definitions/CREATE_REMATCH"
+        }
+      ]
+    },
+    "gameCommand": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/PLACE_SETUP_SETTLEMENT"
+        },
+        {
+          "$ref": "#/definitions/BUILD_SETTLEMENT"
+        },
+        {
+          "$ref": "#/definitions/BUILD_CITY"
+        },
+        {
+          "$ref": "#/definitions/PLACE_SETUP_ROAD"
+        },
+        {
+          "$ref": "#/definitions/BUILD_ROAD"
+        },
+        {
+          "$ref": "#/definitions/PLACE_FREE_ROAD"
+        },
+        {
+          "$ref": "#/definitions/ROLL_DICE"
+        },
+        {
+          "$ref": "#/definitions/BUY_DEVELOPMENT_CARD"
+        },
+        {
+          "$ref": "#/definitions/FINISH_FREE_ROADS"
+        },
+        {
+          "$ref": "#/definitions/END_TURN"
+        },
+        {
+          "$ref": "#/definitions/PAUSE_GAME"
+        },
+        {
+          "$ref": "#/definitions/RESUME_GAME"
+        },
+        {
+          "$ref": "#/definitions/ABANDON_GAME"
+        },
+        {
+          "$ref": "#/definitions/DISCARD_RESOURCES"
+        },
+        {
+          "$ref": "#/definitions/MOVE_ROBBER"
+        },
+        {
+          "$ref": "#/definitions/CHOOSE_ROBBER_VICTIM"
+        },
+        {
+          "$ref": "#/definitions/BANK_TRADE"
+        },
+        {
+          "$ref": "#/definitions/PROPOSE_TRADE"
+        },
+        {
+          "$ref": "#/definitions/ACCEPT_TRADE"
+        },
+        {
+          "$ref": "#/definitions/DECLINE_TRADE"
+        },
+        {
+          "$ref": "#/definitions/CANCEL_TRADE"
+        },
+        {
+          "$ref": "#/definitions/PLAY_DEVELOPMENT_CARD"
+        }
+      ]
+    },
+    "subscribe": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "lastRoomRevision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastGameVersion": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "requestId",
+        "roomId",
+        "lastRoomRevision",
+        "lastGameVersion"
+      ],
+      "additionalProperties": false
+    },
+    "sync": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "lastGameVersion": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "requestId",
+        "roomId",
+        "lastGameVersion"
+      ],
+      "additionalProperties": false
+    },
+    "versionRequest": {
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "required": [
+        "roomId"
+      ],
+      "additionalProperties": false
+    },
+    "authRefresh": {
+      "type": "object",
+      "properties": {
+        "accessToken": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": [
+        "accessToken"
+      ],
+      "additionalProperties": false
+    },
+    "ack": {
+      "type": "object",
+      "properties": {
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACCEPTED",
+            "REJECTED"
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "ROOM",
+            "GAME"
+          ]
+        },
+        "roomId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "invitationCode": {
+              "type": "string",
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{10}$"
+            },
+            "playerId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "error": {
+          "$ref": "#/definitions/error"
+        },
+        "serverTime": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "commandId",
+        "status",
+        "scope",
+        "roomId",
+        "version",
+        "serverTime"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "REJECTED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "error"
+            ],
+            "not": {
+              "required": [
+                "result"
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "roomPlayer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "nickname": {
+          "$ref": "#/definitions/nickname"
+        },
+        "seatIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "colour": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/colour"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ready": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "nickname",
+        "seatIndex",
+        "colour",
+        "ready"
+      ],
+      "additionalProperties": false
+    },
+    "roomSnapshot": {
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "hostPlayerId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "status": {
+          "$ref": "#/definitions/roomStatus"
+        },
+        "settings": {
+          "$ref": "#/definitions/settings"
+        },
+        "players": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/roomPlayer"
+          },
+          "maxItems": 4
+        }
+      },
+      "required": [
+        "roomId",
+        "revision",
+        "hostPlayerId",
+        "status",
+        "settings",
+        "players"
+      ],
+      "additionalProperties": false
+    },
+    "pieces": {
+      "type": "object",
+      "properties": {
+        "roads": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15
+        },
+        "settlements": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "cities": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        }
+      },
+      "required": [
+        "roads",
+        "settlements",
+        "cities"
+      ],
+      "additionalProperties": false
+    },
+    "publicPlayer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "nickname": {
+          "$ref": "#/definitions/nickname"
+        },
+        "seatIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "colour": {
+          "$ref": "#/definitions/colour"
+        },
+        "resourceCardCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 95
+        },
+        "developmentCardCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 25
+        },
+        "playedKnights": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 14
+        },
+        "remainingPieces": {
+          "$ref": "#/definitions/pieces"
+        },
+        "publicPoints": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        }
+      },
+      "required": [
+        "id",
+        "nickname",
+        "seatIndex",
+        "colour",
+        "resourceCardCount",
+        "developmentCardCount",
+        "playedKnights",
+        "remainingPieces",
+        "publicPoints"
+      ],
+      "additionalProperties": false
+    },
+    "developmentCard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "KNIGHT",
+            "VICTORY_POINT",
+            "ROAD_BUILDING",
+            "MONOPOLY",
+            "YEAR_OF_PLENTY"
+          ]
+        },
+        "purchasedOnTurn": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "purchasedOnTurn"
+      ],
+      "additionalProperties": false
+    },
+    "privateState": {
+      "type": "object",
+      "properties": {
+        "playerId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "resources": {
+          "$ref": "#/definitions/resources"
+        },
+        "developmentCards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/developmentCard"
+          },
+          "maxItems": 25
+        },
+        "totalPoints": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "discardRequired": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 47
+        }
+      },
+      "required": [
+        "playerId",
+        "resources",
+        "developmentCards",
+        "totalPoints",
+        "discardRequired"
+      ],
+      "additionalProperties": false
+    },
+    "hex": {
+      "type": "object",
+      "properties": {
+        "q": {
+          "type": "integer",
+          "minimum": -2,
+          "maximum": 2
+        },
+        "r": {
+          "type": "integer",
+          "minimum": -2,
+          "maximum": 2
+        },
+        "terrain": {
+          "type": "string",
+          "enum": [
+            "HILLS",
+            "FOREST",
+            "PASTURE",
+            "FIELDS",
+            "MOUNTAINS",
+            "DESERT"
+          ]
+        },
+        "number": {
+          "enum": [
+            null,
+            2,
+            3,
+            4,
+            5,
+            6,
+            8,
+            9,
+            10,
+            11,
+            12
+          ]
+        },
+        "vertexIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxItems": 6
+        }
+      },
+      "required": [
+        "q",
+        "r",
+        "terrain",
+        "number",
+        "vertexIds"
+      ],
+      "additionalProperties": false
+    },
+    "vertex": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": -20,
+          "maximum": 20
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -20,
+          "maximum": 20
+        },
+        "hexIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxItems": 3
+        },
+        "edgeIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxItems": 3
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "hexIds",
+        "edgeIds"
+      ],
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "properties": {
+        "vertexIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "hexIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxItems": 2
+        }
+      },
+      "required": [
+        "vertexIds",
+        "hexIds"
+      ],
+      "additionalProperties": false
+    },
+    "port": {
+      "type": "object",
+      "properties": {
+        "vertexIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "resourceType": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/resourceType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ratio": {
+          "enum": [
+            2,
+            3
+          ]
+        }
+      },
+      "required": [
+        "vertexIds",
+        "resourceType",
+        "ratio"
+      ],
+      "additionalProperties": false
+    },
+    "board": {
+      "type": "object",
+      "properties": {
+        "topologyVersion": {
+          "const": 1
+        },
+        "hexes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/hex"
+          },
+          "maxProperties": 19,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        },
+        "vertices": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/vertex"
+          },
+          "maxProperties": 54,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        },
+        "edges": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/edge"
+          },
+          "maxProperties": 72,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        },
+        "ports": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/port"
+          },
+          "maxProperties": 9,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        }
+      },
+      "required": [
+        "topologyVersion",
+        "hexes",
+        "vertices",
+        "edges",
+        "ports"
+      ],
+      "additionalProperties": false
+    },
+    "road": {
+      "type": "object",
+      "properties": {
+        "ownerPlayerId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        }
+      },
+      "required": [
+        "ownerPlayerId"
+      ],
+      "additionalProperties": false
+    },
+    "building": {
+      "type": "object",
+      "properties": {
+        "ownerPlayerId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "SETTLEMENT",
+            "CITY"
+          ]
+        }
+      },
+      "required": [
+        "ownerPlayerId",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "award": {
+      "type": "object",
+      "properties": {
+        "holderPlayerId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15
+        }
+      },
+      "required": [
+        "holderPlayerId",
+        "size"
+      ],
+      "additionalProperties": false
+    },
+    "trade": {
+      "type": "object",
+      "properties": {
+        "offerId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "proposerPlayerId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "targetPlayerId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "give": {
+          "$ref": "#/definitions/resources"
+        },
+        "receive": {
+          "$ref": "#/definitions/resources"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "turnNumber": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "phaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "OPEN",
+            "ACCEPTED",
+            "CANCELLED",
+            "EXPIRED"
+          ]
+        },
+        "declinedBy": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "maxItems": 3
+        }
+      },
+      "required": [
+        "offerId",
+        "proposerPlayerId",
+        "targetPlayerId",
+        "give",
+        "receive",
+        "revision",
+        "turnNumber",
+        "phaseId",
+        "status",
+        "declinedBy"
+      ],
+      "additionalProperties": false
+    },
+    "publicState": {
+      "type": "object",
+      "properties": {
+        "board": {
+          "$ref": "#/definitions/board"
+        },
+        "roads": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/road"
+          },
+          "maxProperties": 60,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        },
+        "buildings": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/building"
+          },
+          "maxProperties": 54,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        },
+        "robberHexId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "players": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/publicPlayer"
+          },
+          "maxProperties": 4,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        },
+        "phase": {
+          "$ref": "#/definitions/phase"
+        },
+        "phaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "turnNumber": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "activePlayerId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "requiredPlayerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "maxItems": 4
+        },
+        "hasRolled": {
+          "type": "boolean"
+        },
+        "developmentCardPlayedThisTurn": {
+          "type": "boolean"
+        },
+        "dice": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 6
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trades": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/trade"
+          },
+          "maxProperties": 32,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        },
+        "longestRoad": {
+          "$ref": "#/definitions/award"
+        },
+        "largestArmy": {
+          "$ref": "#/definitions/award"
+        },
+        "pauseReasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "MANUAL",
+              "DISCONNECTED",
+              "RECOVERY",
+              "DATABASE_UNAVAILABLE"
+            ]
+          },
+          "maxItems": 4
+        },
+        "turnDeadline": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "discardDeadlines": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "format": "date-time",
+            "maxLength": 40
+          },
+          "maxProperties": 4,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        },
+        "winnerPlayerId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finalPoints": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20
+          },
+          "maxProperties": 4,
+          "propertyNames": {
+            "pattern": "^[a-zA-Z0-9_-]{1,80}$"
+          }
+        }
+      },
+      "required": [
+        "board",
+        "roads",
+        "buildings",
+        "robberHexId",
+        "players",
+        "phase",
+        "phaseId",
+        "turnNumber",
+        "activePlayerId",
+        "requiredPlayerIds",
+        "hasRolled",
+        "developmentCardPlayedThisTurn",
+        "dice",
+        "trades",
+        "longestRoad",
+        "largestArmy",
+        "pauseReasons",
+        "turnDeadline",
+        "discardDeadlines",
+        "winnerPlayerId",
+        "finalPoints"
+      ],
+      "additionalProperties": false
+    },
+    "gameSnapshot": {
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "rulesVersion": {
+          "const": "base-2020-v1"
+        },
+        "stateSchemaVersion": {
+          "const": 1
+        },
+        "publicState": {
+          "$ref": "#/definitions/publicState"
+        },
+        "privateState": {
+          "$ref": "#/definitions/privateState"
+        },
+        "serverTime": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "roomId",
+        "version",
+        "rulesVersion",
+        "stateSchemaVersion",
+        "publicState",
+        "privateState",
+        "serverTime"
+      ],
+      "additionalProperties": false
+    },
+    "publicPatch": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "enum": [
+                  "add",
+                  "replace"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 256,
+                "pattern": "^(?!.*(?:/)(?:__proto__|prototype|constructor)(?:/|$))/(board|roads|buildings|robberHexId|players|phase|phaseId|turnNumber|activePlayerId|requiredPlayerIds|hasRolled|developmentCardPlayedThisTurn|dice|trades|longestRoad|largestArmy|pauseReasons|turnDeadline|discardDeadlines|winnerPlayerId|finalPoints)(/[a-zA-Z0-9_-]{1,80})*$"
+              },
+              "value": {}
+            },
+            "required": [
+              "op",
+              "path",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "remove"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 256,
+                "pattern": "^(?!.*(?:/)(?:__proto__|prototype|constructor)(?:/|$))/(board|roads|buildings|robberHexId|players|phase|phaseId|turnNumber|activePlayerId|requiredPlayerIds|hasRolled|developmentCardPlayedThisTurn|dice|trades|longestRoad|largestArmy|pauseReasons|turnDeadline|discardDeadlines|winnerPlayerId|finalPoints)(/[a-zA-Z0-9_-]{1,80})*$"
+              }
+            },
+            "required": [
+              "op",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "maxItems": 256
+    },
+    "privatePatch": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "enum": [
+                  "add",
+                  "replace"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 256,
+                "pattern": "^(?!.*(?:/)(?:__proto__|prototype|constructor)(?:/|$))/(playerId|resources|developmentCards|totalPoints|discardRequired)(/[a-zA-Z0-9_-]{1,80})*$"
+              },
+              "value": {}
+            },
+            "required": [
+              "op",
+              "path",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "remove"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 256,
+                "pattern": "^(?!.*(?:/)(?:__proto__|prototype|constructor)(?:/|$))/(playerId|resources|developmentCards|totalPoints|discardRequired)(/[a-zA-Z0-9_-]{1,80})*$"
+              }
+            },
+            "required": [
+              "op",
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "maxItems": 256
+    },
+    "activity": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "actorPlayerId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "type",
+        "actorPlayerId",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "gameDelta": {
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "fromVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "toVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "publicPatch": {
+          "$ref": "#/definitions/publicPatch"
+        },
+        "privatePatch": {
+          "$ref": "#/definitions/privatePatch"
+        },
+        "activity": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/activity"
+          },
+          "maxItems": 32
+        },
+        "serverTime": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "roomId",
+        "fromVersion",
+        "toVersion",
+        "publicPatch",
+        "privatePatch",
+        "activity",
+        "serverTime"
+      ],
+      "additionalProperties": false
+    },
+    "gameVersion": {
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "roomRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "serverTime": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "roomId",
+        "version",
+        "roomRevision",
+        "serverTime"
+      ],
+      "additionalProperties": false
+    },
+    "presence": {
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "onlinePlayerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "maxItems": 4
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 40
+        }
+      },
+      "required": [
+        "roomId",
+        "onlinePlayerIds",
+        "observedAt"
+      ],
+      "additionalProperties": false
+    },
+    "restarting": {
+      "type": "object",
+      "properties": {
+        "retryAfterMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120000
+        }
+      },
+      "required": [
+        "retryAfterMs"
+      ],
+      "additionalProperties": false
+    },
+    "authRefreshAck": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "ACCEPTED"
+            },
+            "serverTime": {
+              "type": "string",
+              "format": "date-time",
+              "maxLength": 40
+            }
+          },
+          "required": [
+            "status",
+            "serverTime"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "REJECTED"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

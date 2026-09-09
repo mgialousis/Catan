@@ -1,0 +1,2116 @@
+[
+  {
+    "name": "accept CREATE_ROOM",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": null,
+      "expectedVersion": null,
+      "expectedPhaseId": null,
+      "type": "CREATE_ROOM",
+      "payload": {
+        "nickname": "sample-id",
+        "settings": {
+          "maxPlayers": 4,
+          "turnLimitSeconds": null,
+          "boardMode": "STANDARD_RANDOM",
+          "rulesVersion": "base-2020-v1"
+        }
+      }
+    }
+  },
+  {
+    "name": "reject forged actor CREATE_ROOM",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": null,
+      "expectedVersion": null,
+      "expectedPhaseId": null,
+      "type": "CREATE_ROOM",
+      "payload": {
+        "nickname": "sample-id",
+        "settings": {
+          "maxPlayers": 4,
+          "turnLimitSeconds": null,
+          "boardMode": "STANDARD_RANDOM",
+          "rulesVersion": "base-2020-v1"
+        },
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept JOIN_ROOM",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": null,
+      "expectedVersion": null,
+      "expectedPhaseId": null,
+      "type": "JOIN_ROOM",
+      "payload": {
+        "nickname": "sample-id",
+        "invitationCode": "ABCDEF1234"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor JOIN_ROOM",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": null,
+      "expectedVersion": null,
+      "expectedPhaseId": null,
+      "type": "JOIN_ROOM",
+      "payload": {
+        "nickname": "sample-id",
+        "invitationCode": "ABCDEF1234",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept SET_PROFILE",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "SET_PROFILE",
+      "payload": {
+        "nickname": "sample-id",
+        "colour": "RED"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor SET_PROFILE",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "SET_PROFILE",
+      "payload": {
+        "nickname": "sample-id",
+        "colour": "RED",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept SET_READY",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "SET_READY",
+      "payload": {
+        "ready": false
+      }
+    }
+  },
+  {
+    "name": "reject forged actor SET_READY",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "SET_READY",
+      "payload": {
+        "ready": false,
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept UPDATE_SETTINGS",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "UPDATE_SETTINGS",
+      "payload": {
+        "turnLimitSeconds": null,
+        "boardMode": "STANDARD_RANDOM"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor UPDATE_SETTINGS",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "UPDATE_SETTINGS",
+      "payload": {
+        "turnLimitSeconds": null,
+        "boardMode": "STANDARD_RANDOM",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept ROTATE_INVITATION",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "ROTATE_INVITATION",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor ROTATE_INVITATION",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "ROTATE_INVITATION",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept LEAVE_LOBBY",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "LEAVE_LOBBY",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor LEAVE_LOBBY",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "LEAVE_LOBBY",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept START_GAME",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "START_GAME",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor START_GAME",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "START_GAME",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept CREATE_REMATCH",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "CREATE_REMATCH",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor CREATE_REMATCH",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": null,
+      "type": "CREATE_REMATCH",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept PLACE_SETUP_SETTLEMENT",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PLACE_SETUP_SETTLEMENT",
+      "payload": {
+        "vertexId": "sample-id"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor PLACE_SETUP_SETTLEMENT",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PLACE_SETUP_SETTLEMENT",
+      "payload": {
+        "vertexId": "sample-id",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept BUILD_SETTLEMENT",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BUILD_SETTLEMENT",
+      "payload": {
+        "vertexId": "sample-id"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor BUILD_SETTLEMENT",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BUILD_SETTLEMENT",
+      "payload": {
+        "vertexId": "sample-id",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept BUILD_CITY",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BUILD_CITY",
+      "payload": {
+        "vertexId": "sample-id"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor BUILD_CITY",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BUILD_CITY",
+      "payload": {
+        "vertexId": "sample-id",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept PLACE_SETUP_ROAD",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PLACE_SETUP_ROAD",
+      "payload": {
+        "edgeId": "sample-id"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor PLACE_SETUP_ROAD",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PLACE_SETUP_ROAD",
+      "payload": {
+        "edgeId": "sample-id",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept BUILD_ROAD",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BUILD_ROAD",
+      "payload": {
+        "edgeId": "sample-id"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor BUILD_ROAD",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BUILD_ROAD",
+      "payload": {
+        "edgeId": "sample-id",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept PLACE_FREE_ROAD",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PLACE_FREE_ROAD",
+      "payload": {
+        "edgeId": "sample-id"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor PLACE_FREE_ROAD",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PLACE_FREE_ROAD",
+      "payload": {
+        "edgeId": "sample-id",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept ROLL_DICE",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "ROLL_DICE",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor ROLL_DICE",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "ROLL_DICE",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept BUY_DEVELOPMENT_CARD",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BUY_DEVELOPMENT_CARD",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor BUY_DEVELOPMENT_CARD",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BUY_DEVELOPMENT_CARD",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept FINISH_FREE_ROADS",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "FINISH_FREE_ROADS",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor FINISH_FREE_ROADS",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "FINISH_FREE_ROADS",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept END_TURN",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "END_TURN",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor END_TURN",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "END_TURN",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept PAUSE_GAME",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PAUSE_GAME",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor PAUSE_GAME",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PAUSE_GAME",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept RESUME_GAME",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "RESUME_GAME",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor RESUME_GAME",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "RESUME_GAME",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept ABANDON_GAME",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "ABANDON_GAME",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject forged actor ABANDON_GAME",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "ABANDON_GAME",
+      "payload": {
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept DISCARD_RESOURCES",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "DISCARD_RESOURCES",
+      "payload": {
+        "resources": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        }
+      }
+    }
+  },
+  {
+    "name": "reject forged actor DISCARD_RESOURCES",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "DISCARD_RESOURCES",
+      "payload": {
+        "resources": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept MOVE_ROBBER",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "MOVE_ROBBER",
+      "payload": {
+        "hexId": "sample-id"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor MOVE_ROBBER",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "MOVE_ROBBER",
+      "payload": {
+        "hexId": "sample-id",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept CHOOSE_ROBBER_VICTIM",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "CHOOSE_ROBBER_VICTIM",
+      "payload": {
+        "victimPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "reject forged actor CHOOSE_ROBBER_VICTIM",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "CHOOSE_ROBBER_VICTIM",
+      "payload": {
+        "victimPlayerId": "11111111-1111-4111-8111-111111111111",
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept BANK_TRADE",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BANK_TRADE",
+      "payload": {
+        "giveType": "brick",
+        "receiveType": "brick",
+        "receiveCount": 1
+      }
+    }
+  },
+  {
+    "name": "reject forged actor BANK_TRADE",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "BANK_TRADE",
+      "payload": {
+        "giveType": "brick",
+        "receiveType": "brick",
+        "receiveCount": 1,
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept PROPOSE_TRADE",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PROPOSE_TRADE",
+      "payload": {
+        "targetPlayerId": "11111111-1111-4111-8111-111111111111",
+        "give": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "receive": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        }
+      }
+    }
+  },
+  {
+    "name": "reject forged actor PROPOSE_TRADE",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PROPOSE_TRADE",
+      "payload": {
+        "targetPlayerId": "11111111-1111-4111-8111-111111111111",
+        "give": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "receive": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept ACCEPT_TRADE",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "ACCEPT_TRADE",
+      "payload": {
+        "offerId": "11111111-1111-4111-8111-111111111111",
+        "offerRevision": 0
+      }
+    }
+  },
+  {
+    "name": "reject forged actor ACCEPT_TRADE",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "ACCEPT_TRADE",
+      "payload": {
+        "offerId": "11111111-1111-4111-8111-111111111111",
+        "offerRevision": 0,
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept DECLINE_TRADE",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "DECLINE_TRADE",
+      "payload": {
+        "offerId": "11111111-1111-4111-8111-111111111111",
+        "offerRevision": 0
+      }
+    }
+  },
+  {
+    "name": "reject forged actor DECLINE_TRADE",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "DECLINE_TRADE",
+      "payload": {
+        "offerId": "11111111-1111-4111-8111-111111111111",
+        "offerRevision": 0,
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept CANCEL_TRADE",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "CANCEL_TRADE",
+      "payload": {
+        "offerId": "11111111-1111-4111-8111-111111111111",
+        "offerRevision": 0
+      }
+    }
+  },
+  {
+    "name": "reject forged actor CANCEL_TRADE",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "CANCEL_TRADE",
+      "payload": {
+        "offerId": "11111111-1111-4111-8111-111111111111",
+        "offerRevision": 0,
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept PLAY_DEVELOPMENT_CARD",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PLAY_DEVELOPMENT_CARD",
+      "payload": {
+        "cardId": "11111111-1111-4111-8111-111111111111",
+        "choice": {}
+      }
+    }
+  },
+  {
+    "name": "reject forged actor PLAY_DEVELOPMENT_CARD",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "expectedVersion": 0,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "PLAY_DEVELOPMENT_CARD",
+      "payload": {
+        "cardId": "11111111-1111-4111-8111-111111111111",
+        "choice": {},
+        "actorPlayerId": "11111111-1111-4111-8111-111111111111"
+      }
+    }
+  },
+  {
+    "name": "accept handshake",
+    "schema": "handshake",
+    "valid": true,
+    "value": {
+      "accessToken": "sample-id",
+      "protocolVersion": 1,
+      "clientInstanceId": "11111111-1111-4111-8111-111111111111"
+    }
+  },
+  {
+    "name": "reject unknown field handshake",
+    "schema": "handshake",
+    "valid": false,
+    "value": {
+      "accessToken": "sample-id",
+      "protocolVersion": 1,
+      "clientInstanceId": "11111111-1111-4111-8111-111111111111",
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept serverHello",
+    "schema": "serverHello",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "serverTime": "2026-09-09T12:00:00.000Z",
+      "heartbeatIntervalMs": 1000,
+      "maxCommandBytes": 16384
+    }
+  },
+  {
+    "name": "reject unknown field serverHello",
+    "schema": "serverHello",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "serverTime": "2026-09-09T12:00:00.000Z",
+      "heartbeatIntervalMs": 1000,
+      "maxCommandBytes": 16384,
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept resources",
+    "schema": "resources",
+    "valid": true,
+    "value": {
+      "brick": 0,
+      "lumber": 0,
+      "wool": 0,
+      "grain": 0,
+      "ore": 0
+    }
+  },
+  {
+    "name": "reject unknown field resources",
+    "schema": "resources",
+    "valid": false,
+    "value": {
+      "brick": 0,
+      "lumber": 0,
+      "wool": 0,
+      "grain": 0,
+      "ore": 0,
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept error",
+    "schema": "error",
+    "valid": true,
+    "value": {
+      "code": "UNAUTHENTICATED",
+      "message": "sample-id",
+      "retryable": false
+    }
+  },
+  {
+    "name": "reject unknown field error",
+    "schema": "error",
+    "valid": false,
+    "value": {
+      "code": "UNAUTHENTICATED",
+      "message": "sample-id",
+      "retryable": false,
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept roomSnapshot",
+    "schema": "roomSnapshot",
+    "valid": true,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "revision": 0,
+      "hostPlayerId": "11111111-1111-4111-8111-111111111111",
+      "status": "LOBBY",
+      "settings": {
+        "maxPlayers": 4,
+        "turnLimitSeconds": null,
+        "boardMode": "STANDARD_RANDOM",
+        "rulesVersion": "base-2020-v1"
+      },
+      "players": []
+    }
+  },
+  {
+    "name": "reject unknown field roomSnapshot",
+    "schema": "roomSnapshot",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "revision": 0,
+      "hostPlayerId": "11111111-1111-4111-8111-111111111111",
+      "status": "LOBBY",
+      "settings": {
+        "maxPlayers": 4,
+        "turnLimitSeconds": null,
+        "boardMode": "STANDARD_RANDOM",
+        "rulesVersion": "base-2020-v1"
+      },
+      "players": [],
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept gameSnapshot",
+    "schema": "gameSnapshot",
+    "valid": true,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "rulesVersion": "base-2020-v1",
+      "stateSchemaVersion": 1,
+      "publicState": {
+        "board": {
+          "topologyVersion": 1,
+          "hexes": {},
+          "vertices": {},
+          "edges": {},
+          "ports": {}
+        },
+        "roads": {},
+        "buildings": {},
+        "robberHexId": "sample-id",
+        "players": {},
+        "phase": "SETUP_SETTLEMENT",
+        "phaseId": "11111111-1111-4111-8111-111111111111",
+        "turnNumber": 0,
+        "activePlayerId": "11111111-1111-4111-8111-111111111111",
+        "requiredPlayerIds": [],
+        "hasRolled": false,
+        "developmentCardPlayedThisTurn": false,
+        "dice": [
+          1,
+          1
+        ],
+        "trades": {},
+        "longestRoad": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "largestArmy": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "pauseReasons": [],
+        "turnDeadline": "2026-09-09T12:00:00.000Z",
+        "discardDeadlines": {},
+        "winnerPlayerId": "11111111-1111-4111-8111-111111111111",
+        "finalPoints": {}
+      },
+      "privateState": {
+        "playerId": "11111111-1111-4111-8111-111111111111",
+        "resources": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "developmentCards": [],
+        "totalPoints": 0,
+        "discardRequired": 0
+      },
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject unknown field gameSnapshot",
+    "schema": "gameSnapshot",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "rulesVersion": "base-2020-v1",
+      "stateSchemaVersion": 1,
+      "publicState": {
+        "board": {
+          "topologyVersion": 1,
+          "hexes": {},
+          "vertices": {},
+          "edges": {},
+          "ports": {}
+        },
+        "roads": {},
+        "buildings": {},
+        "robberHexId": "sample-id",
+        "players": {},
+        "phase": "SETUP_SETTLEMENT",
+        "phaseId": "11111111-1111-4111-8111-111111111111",
+        "turnNumber": 0,
+        "activePlayerId": "11111111-1111-4111-8111-111111111111",
+        "requiredPlayerIds": [],
+        "hasRolled": false,
+        "developmentCardPlayedThisTurn": false,
+        "dice": [
+          1,
+          1
+        ],
+        "trades": {},
+        "longestRoad": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "largestArmy": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "pauseReasons": [],
+        "turnDeadline": "2026-09-09T12:00:00.000Z",
+        "discardDeadlines": {},
+        "winnerPlayerId": "11111111-1111-4111-8111-111111111111",
+        "finalPoints": {}
+      },
+      "privateState": {
+        "playerId": "11111111-1111-4111-8111-111111111111",
+        "resources": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "developmentCards": [],
+        "totalPoints": 0,
+        "discardRequired": 0
+      },
+      "serverTime": "2026-09-09T12:00:00.000Z",
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept gameVersion",
+    "schema": "gameVersion",
+    "valid": true,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "roomRevision": 0,
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject unknown field gameVersion",
+    "schema": "gameVersion",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "roomRevision": 0,
+      "serverTime": "2026-09-09T12:00:00.000Z",
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept presence",
+    "schema": "presence",
+    "valid": true,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "onlinePlayerIds": [],
+      "observedAt": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject unknown field presence",
+    "schema": "presence",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "onlinePlayerIds": [],
+      "observedAt": "2026-09-09T12:00:00.000Z",
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept restarting",
+    "schema": "restarting",
+    "valid": true,
+    "value": {
+      "retryAfterMs": 0
+    }
+  },
+  {
+    "name": "reject unknown field restarting",
+    "schema": "restarting",
+    "valid": false,
+    "value": {
+      "retryAfterMs": 0,
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept subscribe",
+    "schema": "subscribe",
+    "valid": true,
+    "value": {
+      "requestId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "lastRoomRevision": 0,
+      "lastGameVersion": 0
+    }
+  },
+  {
+    "name": "reject unknown field subscribe",
+    "schema": "subscribe",
+    "valid": false,
+    "value": {
+      "requestId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "lastRoomRevision": 0,
+      "lastGameVersion": 0,
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept sync",
+    "schema": "sync",
+    "valid": true,
+    "value": {
+      "requestId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "lastGameVersion": 0
+    }
+  },
+  {
+    "name": "reject unknown field sync",
+    "schema": "sync",
+    "valid": false,
+    "value": {
+      "requestId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "lastGameVersion": 0,
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept versionRequest",
+    "schema": "versionRequest",
+    "valid": true,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111"
+    }
+  },
+  {
+    "name": "reject unknown field versionRequest",
+    "schema": "versionRequest",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept authRefresh",
+    "schema": "authRefresh",
+    "valid": true,
+    "value": {
+      "accessToken": "sample-id"
+    }
+  },
+  {
+    "name": "reject unknown field authRefresh",
+    "schema": "authRefresh",
+    "valid": false,
+    "value": {
+      "accessToken": "sample-id",
+      "secret": "must not pass"
+    }
+  },
+  {
+    "name": "accept acknowledgement",
+    "schema": "ack",
+    "valid": true,
+    "value": {
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "status": "ACCEPTED",
+      "scope": "GAME",
+      "roomId": "22222222-2222-4222-8222-222222222222",
+      "version": 42,
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "accept rejection",
+    "schema": "ack",
+    "valid": true,
+    "value": {
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "status": "REJECTED",
+      "scope": "GAME",
+      "roomId": "22222222-2222-4222-8222-222222222222",
+      "version": null,
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "Unavailable",
+        "retryable": false
+      },
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject missing error",
+    "schema": "ack",
+    "valid": false,
+    "value": {
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "status": "REJECTED",
+      "scope": "GAME",
+      "roomId": "22222222-2222-4222-8222-222222222222",
+      "version": null,
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "accept delta",
+    "schema": "gameDelta",
+    "valid": true,
+    "value": {
+      "roomId": "22222222-2222-4222-8222-222222222222",
+      "fromVersion": 41,
+      "toVersion": 42,
+      "publicPatch": [
+        {
+          "op": "add",
+          "path": "/roads/e-17",
+          "value": {
+            "ownerPlayerId": "11111111-1111-4111-8111-111111111111"
+          }
+        }
+      ],
+      "privatePatch": [
+        {
+          "op": "replace",
+          "path": "/resources/brick",
+          "value": 1
+        }
+      ],
+      "activity": [],
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject secret path publicPatch/serverState/developmentDeck",
+    "schema": "publicPatch",
+    "valid": false,
+    "value": [
+      {
+        "op": "add",
+        "path": "/serverState/developmentDeck",
+        "value": "secret"
+      }
+    ]
+  },
+  {
+    "name": "reject secret path publicPatch/privateState/11111111-1111-4111-8111-111111111111/resources",
+    "schema": "publicPatch",
+    "valid": false,
+    "value": [
+      {
+        "op": "add",
+        "path": "/privateState/11111111-1111-4111-8111-111111111111/resources",
+        "value": "secret"
+      }
+    ]
+  },
+  {
+    "name": "reject secret path publicPatch/__proto__/polluted",
+    "schema": "publicPatch",
+    "valid": false,
+    "value": [
+      {
+        "op": "add",
+        "path": "/__proto__/polluted",
+        "value": "secret"
+      }
+    ]
+  },
+  {
+    "name": "reject secret path privatePatch/serverState/developmentDeck",
+    "schema": "privatePatch",
+    "valid": false,
+    "value": [
+      {
+        "op": "add",
+        "path": "/serverState/developmentDeck",
+        "value": "secret"
+      }
+    ]
+  },
+  {
+    "name": "reject secret path privatePatch/privateState/11111111-1111-4111-8111-111111111111/resources",
+    "schema": "privatePatch",
+    "valid": false,
+    "value": [
+      {
+        "op": "add",
+        "path": "/privateState/11111111-1111-4111-8111-111111111111/resources",
+        "value": "secret"
+      }
+    ]
+  },
+  {
+    "name": "reject secret path privatePatch/__proto__/polluted",
+    "schema": "privatePatch",
+    "valid": false,
+    "value": [
+      {
+        "op": "add",
+        "path": "/__proto__/polluted",
+        "value": "secret"
+      }
+    ]
+  },
+  {
+    "name": "reject invalid resource -1",
+    "schema": "resources",
+    "valid": false,
+    "value": {
+      "brick": 0,
+      "lumber": 0,
+      "wool": 0,
+      "grain": 0,
+      "ore": -1
+    }
+  },
+  {
+    "name": "reject invalid resource 1.5",
+    "schema": "resources",
+    "valid": false,
+    "value": {
+      "brick": 0,
+      "lumber": 0,
+      "wool": 0,
+      "grain": 0,
+      "ore": 1.5
+    }
+  },
+  {
+    "name": "reject invalid resource 20",
+    "schema": "resources",
+    "valid": false,
+    "value": {
+      "brick": 0,
+      "lumber": 0,
+      "wool": 0,
+      "grain": 0,
+      "ore": 20
+    }
+  },
+  {
+    "name": "reject invalid resource 2",
+    "schema": "resources",
+    "valid": false,
+    "value": {
+      "brick": 0,
+      "lumber": 0,
+      "wool": 0,
+      "grain": 0,
+      "ore": "2"
+    }
+  },
+  {
+    "name": "reject invalid resource None",
+    "schema": "resources",
+    "valid": false,
+    "value": {
+      "brick": 0,
+      "lumber": 0,
+      "wool": 0,
+      "grain": 0,
+      "ore": null
+    }
+  },
+  {
+    "name": "reject public leak private_state",
+    "schema": "gameSnapshot",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "rulesVersion": "base-2020-v1",
+      "stateSchemaVersion": 1,
+      "publicState": {
+        "board": {
+          "topologyVersion": 1,
+          "hexes": {},
+          "vertices": {},
+          "edges": {},
+          "ports": {}
+        },
+        "roads": {},
+        "buildings": {},
+        "robberHexId": "sample-id",
+        "players": {},
+        "phase": "SETUP_SETTLEMENT",
+        "phaseId": "11111111-1111-4111-8111-111111111111",
+        "turnNumber": 0,
+        "activePlayerId": "11111111-1111-4111-8111-111111111111",
+        "requiredPlayerIds": [],
+        "hasRolled": false,
+        "developmentCardPlayedThisTurn": false,
+        "dice": [
+          1,
+          1
+        ],
+        "trades": {},
+        "longestRoad": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "largestArmy": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "pauseReasons": [],
+        "turnDeadline": "2026-09-09T12:00:00.000Z",
+        "discardDeadlines": {},
+        "winnerPlayerId": "11111111-1111-4111-8111-111111111111",
+        "finalPoints": {},
+        "private_state": {
+          "secret": 1
+        }
+      },
+      "privateState": {
+        "playerId": "11111111-1111-4111-8111-111111111111",
+        "resources": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "developmentCards": [],
+        "totalPoints": 0,
+        "discardRequired": 0
+      },
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject public leak authUserId",
+    "schema": "gameSnapshot",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "rulesVersion": "base-2020-v1",
+      "stateSchemaVersion": 1,
+      "publicState": {
+        "board": {
+          "topologyVersion": 1,
+          "hexes": {},
+          "vertices": {},
+          "edges": {},
+          "ports": {}
+        },
+        "roads": {},
+        "buildings": {},
+        "robberHexId": "sample-id",
+        "players": {},
+        "phase": "SETUP_SETTLEMENT",
+        "phaseId": "11111111-1111-4111-8111-111111111111",
+        "turnNumber": 0,
+        "activePlayerId": "11111111-1111-4111-8111-111111111111",
+        "requiredPlayerIds": [],
+        "hasRolled": false,
+        "developmentCardPlayedThisTurn": false,
+        "dice": [
+          1,
+          1
+        ],
+        "trades": {},
+        "longestRoad": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "largestArmy": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "pauseReasons": [],
+        "turnDeadline": "2026-09-09T12:00:00.000Z",
+        "discardDeadlines": {},
+        "winnerPlayerId": "11111111-1111-4111-8111-111111111111",
+        "finalPoints": {},
+        "authUserId": {
+          "secret": 1
+        }
+      },
+      "privateState": {
+        "playerId": "11111111-1111-4111-8111-111111111111",
+        "resources": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "developmentCards": [],
+        "totalPoints": 0,
+        "discardRequired": 0
+      },
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject public leak developmentDeck",
+    "schema": "gameSnapshot",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "rulesVersion": "base-2020-v1",
+      "stateSchemaVersion": 1,
+      "publicState": {
+        "board": {
+          "topologyVersion": 1,
+          "hexes": {},
+          "vertices": {},
+          "edges": {},
+          "ports": {}
+        },
+        "roads": {},
+        "buildings": {},
+        "robberHexId": "sample-id",
+        "players": {},
+        "phase": "SETUP_SETTLEMENT",
+        "phaseId": "11111111-1111-4111-8111-111111111111",
+        "turnNumber": 0,
+        "activePlayerId": "11111111-1111-4111-8111-111111111111",
+        "requiredPlayerIds": [],
+        "hasRolled": false,
+        "developmentCardPlayedThisTurn": false,
+        "dice": [
+          1,
+          1
+        ],
+        "trades": {},
+        "longestRoad": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "largestArmy": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "pauseReasons": [],
+        "turnDeadline": "2026-09-09T12:00:00.000Z",
+        "discardDeadlines": {},
+        "winnerPlayerId": "11111111-1111-4111-8111-111111111111",
+        "finalPoints": {},
+        "developmentDeck": {
+          "secret": 1
+        }
+      },
+      "privateState": {
+        "playerId": "11111111-1111-4111-8111-111111111111",
+        "resources": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "developmentCards": [],
+        "totalPoints": 0,
+        "discardRequired": 0
+      },
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject public leak bank",
+    "schema": "gameSnapshot",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "rulesVersion": "base-2020-v1",
+      "stateSchemaVersion": 1,
+      "publicState": {
+        "board": {
+          "topologyVersion": 1,
+          "hexes": {},
+          "vertices": {},
+          "edges": {},
+          "ports": {}
+        },
+        "roads": {},
+        "buildings": {},
+        "robberHexId": "sample-id",
+        "players": {},
+        "phase": "SETUP_SETTLEMENT",
+        "phaseId": "11111111-1111-4111-8111-111111111111",
+        "turnNumber": 0,
+        "activePlayerId": "11111111-1111-4111-8111-111111111111",
+        "requiredPlayerIds": [],
+        "hasRolled": false,
+        "developmentCardPlayedThisTurn": false,
+        "dice": [
+          1,
+          1
+        ],
+        "trades": {},
+        "longestRoad": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "largestArmy": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "pauseReasons": [],
+        "turnDeadline": "2026-09-09T12:00:00.000Z",
+        "discardDeadlines": {},
+        "winnerPlayerId": "11111111-1111-4111-8111-111111111111",
+        "finalPoints": {},
+        "bank": {
+          "secret": 1
+        }
+      },
+      "privateState": {
+        "playerId": "11111111-1111-4111-8111-111111111111",
+        "resources": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0
+        },
+        "developmentCards": [],
+        "totalPoints": 0,
+        "discardRequired": 0
+      },
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject full private map",
+    "schema": "gameSnapshot",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "rulesVersion": "base-2020-v1",
+      "stateSchemaVersion": 1,
+      "publicState": {
+        "board": {
+          "topologyVersion": 1,
+          "hexes": {},
+          "vertices": {},
+          "edges": {},
+          "ports": {}
+        },
+        "roads": {},
+        "buildings": {},
+        "robberHexId": "sample-id",
+        "players": {},
+        "phase": "SETUP_SETTLEMENT",
+        "phaseId": "11111111-1111-4111-8111-111111111111",
+        "turnNumber": 0,
+        "activePlayerId": "11111111-1111-4111-8111-111111111111",
+        "requiredPlayerIds": [],
+        "hasRolled": false,
+        "developmentCardPlayedThisTurn": false,
+        "dice": [
+          1,
+          1
+        ],
+        "trades": {},
+        "longestRoad": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "largestArmy": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "pauseReasons": [],
+        "turnDeadline": "2026-09-09T12:00:00.000Z",
+        "discardDeadlines": {},
+        "winnerPlayerId": "11111111-1111-4111-8111-111111111111",
+        "finalPoints": {}
+      },
+      "privateState": {
+        "11111111-1111-4111-8111-111111111111": {
+          "playerId": "11111111-1111-4111-8111-111111111111",
+          "resources": {
+            "brick": 0,
+            "lumber": 0,
+            "wool": 0,
+            "grain": 0,
+            "ore": 0
+          },
+          "developmentCards": [],
+          "totalPoints": 0,
+          "discardRequired": 0
+        }
+      },
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject nested private field",
+    "schema": "gameSnapshot",
+    "valid": false,
+    "value": {
+      "roomId": "11111111-1111-4111-8111-111111111111",
+      "version": 0,
+      "rulesVersion": "base-2020-v1",
+      "stateSchemaVersion": 1,
+      "publicState": {
+        "board": {
+          "topologyVersion": 1,
+          "hexes": {},
+          "vertices": {},
+          "edges": {},
+          "ports": {}
+        },
+        "roads": {},
+        "buildings": {},
+        "robberHexId": "sample-id",
+        "players": {},
+        "phase": "SETUP_SETTLEMENT",
+        "phaseId": "11111111-1111-4111-8111-111111111111",
+        "turnNumber": 0,
+        "activePlayerId": "11111111-1111-4111-8111-111111111111",
+        "requiredPlayerIds": [],
+        "hasRolled": false,
+        "developmentCardPlayedThisTurn": false,
+        "dice": [
+          1,
+          1
+        ],
+        "trades": {},
+        "longestRoad": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "largestArmy": {
+          "holderPlayerId": "11111111-1111-4111-8111-111111111111",
+          "size": 0
+        },
+        "pauseReasons": [],
+        "turnDeadline": "2026-09-09T12:00:00.000Z",
+        "discardDeadlines": {},
+        "winnerPlayerId": "11111111-1111-4111-8111-111111111111",
+        "finalPoints": {}
+      },
+      "privateState": {
+        "playerId": "11111111-1111-4111-8111-111111111111",
+        "resources": {
+          "brick": 0,
+          "lumber": 0,
+          "wool": 0,
+          "grain": 0,
+          "ore": 0,
+          "hidden": "secret"
+        },
+        "developmentCards": [],
+        "totalPoints": 0,
+        "discardRequired": 0
+      },
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject unsupported protocol",
+    "schema": "handshake",
+    "valid": false,
+    "value": {
+      "accessToken": "token",
+      "protocolVersion": 2,
+      "clientInstanceId": "11111111-1111-4111-8111-111111111111"
+    }
+  },
+  {
+    "name": "reject invalid timestamp",
+    "schema": "serverHello",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "serverTime": "yesterday",
+      "heartbeatIntervalMs": 25000,
+      "maxCommandBytes": 16384
+    }
+  },
+  {
+    "name": "reject dangerous nested patch publicPatch",
+    "schema": "publicPatch",
+    "valid": false,
+    "value": [
+      {
+        "op": "add",
+        "path": "/players/__proto__/nickname",
+        "value": "secret"
+      }
+    ]
+  },
+  {
+    "name": "reject dangerous nested patch privatePatch",
+    "schema": "privatePatch",
+    "valid": false,
+    "value": [
+      {
+        "op": "add",
+        "path": "/resources/constructor/prototype",
+        "value": "secret"
+      }
+    ]
+  },
+  {
+    "name": "accept auth refresh acknowledgement",
+    "schema": "authRefreshAck",
+    "valid": true,
+    "value": {
+      "status": "ACCEPTED",
+      "serverTime": "2026-09-09T12:00:00.000Z"
+    }
+  },
+  {
+    "name": "reject auth refresh leaked token",
+    "schema": "authRefreshAck",
+    "valid": false,
+    "value": {
+      "status": "ACCEPTED",
+      "serverTime": "2026-09-09T12:00:00.000Z",
+      "accessToken": "secret"
+    }
+  }
+]

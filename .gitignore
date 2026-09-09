@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+.local/
+supabase/.temp/
+supabase/.branches/
+.DS_Store
+*.log
+*.tsbuildinfo
+apps/mobile/config/*.json
+!apps/mobile/config/*.example.json
+apps/mobile/assets/protocol/
