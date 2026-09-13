@@ -421,7 +421,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
                             false =>
                               'Could not reach the clipboard. Select the link above and copy it.',
                             null =>
-                              'Copied. If nothing pastes, select the link above.',
+                              'Could not confirm the copy. If nothing pastes, select the link above.',
                           }),
                         ),
                       );

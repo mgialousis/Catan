@@ -67,17 +67,26 @@ void main() {
 
     test('reports failure when the write silently did not take', () async {
       mock((call) async {
-        if (call.method == 'Clipboard.setData') return null;   // resolves, writes nothing
-        if (call.method == 'Clipboard.getData') return {'text': 'something else'};
+        if (call.method == 'Clipboard.setData') {
+          return null; // resolves, writes nothing
+        }
+        if (call.method == 'Clipboard.getData') {
+          return {'text': 'something else'};
+        }
         return null;
       });
-      expect(await copyToClipboard('https://example.test/?invite=ABC'), isFalse);
+      expect(
+        await copyToClipboard('https://example.test/?invite=ABC'),
+        isFalse,
+      );
     });
 
     test('reports unknown when the clipboard cannot be read back', () async {
       mock((call) async {
         if (call.method == 'Clipboard.setData') return null;
-        if (call.method == 'Clipboard.getData') throw PlatformException(code: 'denied');
+        if (call.method == 'Clipboard.getData') {
+          throw PlatformException(code: 'denied');
+        }
         return null;
       });
       expect(await copyToClipboard('https://example.test/?invite=ABC'), isNull);
@@ -85,10 +94,15 @@ void main() {
 
     test('reports failure when the write itself is refused', () async {
       mock((call) async {
-        if (call.method == 'Clipboard.setData') throw PlatformException(code: 'denied');
+        if (call.method == 'Clipboard.setData') {
+          throw PlatformException(code: 'denied');
+        }
         return null;
       });
-      expect(await copyToClipboard('https://example.test/?invite=ABC'), isFalse);
+      expect(
+        await copyToClipboard('https://example.test/?invite=ABC'),
+        isFalse,
+      );
     });
   });
 

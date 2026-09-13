@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:island_table/core/connection.dart';
 import 'package:island_table/game/controller.dart';
 import 'package:island_table/game/game_screen.dart';
+import 'package:island_table/game/model.dart';
 import 'game_test.dart' show FakePort;
 import 'game_model_test.dart' show uiProtocol, uiSnapshot;
 
@@ -68,6 +69,39 @@ Future<void> press(WidgetTester t, String label) async {
 }
 
 void main() {
+  testWidgets('trade resources stay exclusive and unlock when removed', (
+    t,
+  ) async {
+    await showGame(t, 'action', size: const Size(900, 1400));
+    await press(t, 'Trade');
+    final buttons = find.byWidgetPredicate(
+      (w) => w is IconButton && w.tooltip == 'One more Brick',
+    );
+    final give = buttons.first;
+    final receive = buttons.last;
+    await t.tap(give);
+    await t.pump();
+    expect(t.widget<IconButton>(receive).onPressed, isNull);
+    expect(
+      find.textContaining('offered above', findRichText: true),
+      findsOneWidget,
+    );
+    await t.tap(find.byTooltip('One fewer Brick').first);
+    await t.pump();
+    expect(t.widget<IconButton>(receive).onPressed, isNotNull);
+    await t.ensureVisible(receive);
+    await t.tap(receive);
+    await t.pump();
+    expect(t.widget<IconButton>(give).onPressed, isNull);
+    expect(
+      find.textContaining('asked for below', findRichText: true),
+      findsOneWidget,
+    );
+    await t.tap(find.byTooltip('One fewer Brick').last);
+    await t.pump();
+    expect(t.widget<IconButton>(give).onPressed, isNotNull);
+  });
+
   testWidgets(
     'waiting player can compose a trade only with the active player',
     (t) async {
@@ -175,6 +209,16 @@ void main() {
     await press(t, 'Play a card');
     await t.tap(find.text('Year Of Plenty').last);
     await t.pumpAndSettle();
+    final holdings = GameSnapshot.parse(uiSnapshot('action'), uiProtocol).stock;
+    for (final resource in holdings.keys) {
+      expect(
+        find.text(
+          '${words(resource)}  you hold ${holdings[resource]}',
+          findRichText: true,
+        ),
+        findsOneWidget,
+      );
+    }
     for (var i = 0; i < 2; i++) {
       await t.tap(find.byTooltip('One more Grain'));
       await t.pump();

@@ -876,6 +876,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
     final required = s.hand['discardRequired'] as int;
     final chosen = await _pickResources(
       title: 'Discard $required cards',
+      holdings: s.stock,
       available: s.stock,
       exactly: required,
     );
@@ -938,6 +939,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
     } else if (type == 'YEAR_OF_PLENTY') {
       final picked = await _pickResources(
         title: 'Take two resources',
+        holdings: s.stock,
         available: null,
         exactly: 2,
       );
@@ -961,6 +963,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
   /// Shared counter used by discards and Year of Plenty. [available] caps each type.
   Future<Map<String, int>?> _pickResources({
     required String title,
+    required Map<String, int> holdings,
     required Map<String, int>? available,
     required int exactly,
   }) => showDialog<Map<String, int>>(
@@ -980,9 +983,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
                     _ResourceCounter(
                       label: words(resource),
                       value: chosen[resource]!,
-                      hint: available == null
-                          ? null
-                          : 'you hold ${available[resource]}',
+                      hint: 'you hold ${holdings[resource]}',
                       onChanged: (delta) => setSheetState(
                         () => chosen[resource] = chosen[resource]! + delta,
                       ),

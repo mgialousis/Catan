@@ -53,7 +53,7 @@ Project `dybismsqbzubwzzfrnfo` (`https://dybismsqbzubwzzfrnfo.supabase.co`) was 
 Supabase MCP server, so P7.2's database half was carried out. **Divergence from the runbook:** the
 migration was applied through MCP `apply_migration` rather than `supabase db push`, because no CLI
 access token is configured. It was recorded under the same name as the checked-in file
-(`20260909000100_foundation`), so local and remote history stay aligned.
+(`20260909000100_foundation`), but **the version IDs are not aligned**: a 2026-09-14 MCP check returned remote version `20260913200406`, whereas the local filename starts with `20260909000100`. Reconcile the tracking records after verifying schema equivalence, before the next database push.
 
 Pre-state confirmed fresh before writing anything — no `app` schema, no `island_*` roles, empty
 migration history, `auth.users` empty. No export was required and no existing data was touched.
@@ -111,9 +111,9 @@ Database Settings → SSL Configuration. Two workable options, both preserving v
 - Commit the root certificate (it is a public root, not a secret), `COPY` it in `apps/server/Dockerfile`
   and set `NODE_EXTRA_CA_CERTS`. Reproducible and testable in the container smoke.
 
-**Resolved by baking the root into the image.** `apps/server/supabase-root-2021.crt` is committed (a
-public root certificate, not a secret) and the runtime stage sets
-`NODE_EXTRA_CA_CERTS=/app/apps/server/supabase-root-2021.crt`. That *appends* to Node's default store,
+**Initially resolved by baking the root into the image at `72d76f4`.** `apps/server/supabase-root-2021.crt` was committed (a
+public root certificate, not a secret) and that runtime stage set
+`NODE_EXTRA_CA_CERTS=/app/apps/server/supabase-root-2021.crt`. The current source replaces this file with `apps/server/supabase-roots.crt`; the live services still need that update. That *appends* to Node's default store,
 so JWKS over public CAs keeps working, and certificate verification is never disabled.
 
 Verified with the real deployment artifact, not just the mechanism: the built image was run against
@@ -139,7 +139,7 @@ and through the built image.
 `scripts/hosted-maintenance.mjs` also pins `rejectUnauthorized: true`, so operator retention run from a
 laptop needs `NODE_EXTRA_CA_CERTS` pointed at the same file.
 
-Render remains entirely unconfigured, so `npm run hosted:preflight` cannot run yet.
+At this point in the initial provisioning session Render was not configured; the following deployment section records its subsequent setup.
 
 ## Hosted deployment — 2026-09-13 (Claude)
 
@@ -236,11 +236,11 @@ runtime role deliberately cannot delete fixtures.
 | P7.9 Operations | Hosted retention invocation and backup/restore rehearsal into an isolated test database. The runbook/tooling is prepared. |
 | P7.10 Final evidence | Service links, actual physical-device versions, acceptance logs and account quota settings. |
 
-Access: Supabase and Render MCP servers are both configured and were used for provisioning and deployment. The Supabase CLI still reports **“Access token not provided”**, so migrations went through MCP `apply_migration` rather than `supabase db push`; the remote history records the same migration name as the checked-in file. No Render CLI is installed and none is needed.
+Access: Supabase and Render MCP servers are both configured and were used for provisioning and deployment. The Supabase CLI still reports **“Access token not provided”**, so migrations went through MCP `apply_migration` rather than `supabase db push`; the remote history records the same migration name but a different version ID from the checked-in file (see the correction above). No Render CLI is installed and none is needed.
 
 ## Handoff — suggested order for the remaining Phase 7 work
 
-Phase 7 stays open. Nothing below is blocked on access any more; it is all acceptance work.
+Phase 7 stays open. Hosted MCP access is available; physical devices and iOS provisioning are still needed. First deploy the reviewed application fixes and reconcile migration history before future database changes; then continue the acceptance work below.
 
 1. **Measure ingress and set `TRUSTED_PROXY_HOPS` (P7.3).** It is still the unmeasured default of `0`,
    which means per-IP invitation limits may pool every player behind Render's address. Send differing

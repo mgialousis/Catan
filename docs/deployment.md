@@ -16,7 +16,7 @@ real-device and separate-network acceptance is still open. Local artifacts built
 | Auth | Anonymous sign-ins enabled; JWKS serves one ES256 key |
 | Auto-deploy | **Off** on both services, so a push never interrupts a game |
 
-Operator values live in ignored `.local/operator.env` (mode 600). Nothing secret belongs in this file
+Operator values live in ignored `.local/operator.env` (mode 600). Nothing secret belongs in this runbook
 or in Git. To redeploy after a push, trigger each service explicitly, or change an environment
 variable — Render redeploys automatically when env vars change.
 
@@ -25,10 +25,21 @@ creation, before `sync: false` variables can be filled, so the first API deploy 
 `API startup failed` until the variables exist — that message is deliberately vague and does not
 indicate a build problem. And the session pooler chains to a private `Supabase Root 2021 CA`, so
 verified TLS needs that certificate. `apps/server/supabase-roots.crt` bundles **both** published
-Supabase roots — the 2021 root the pooler serves today and the 2025 key rollover — and the runtime
+Supabase roots — the 2021 root the pooler serves today and the 2025 key rollover — and the current source runtime
 image trusts them through `NODE_EXTRA_CA_CERTS`, so a root migration will not take the API offline.
 Both were checked byte-for-byte against the official `supabase/cli` repository. Operator scripts run
 from a laptop need the same variable pointed at the same file.
+
+As checked on 2026-09-14, both live services still run `72d76f4`; the source changes in
+`4f26afd` (both CA roots) and `f500307` (invitation/resource UI) have **not** been deployed.
+Publish a reviewed commit and explicitly deploy both services between games, then rerun preflight.
+
+Before the next database deployment, reconcile migration history. The remote record is version
+`20260913200406`, name `20260909000100_foundation`, while the checked-in file has version
+`20260909000100`. Equal names do not align the version IDs. Verify the applied SQL/schema first,
+then repair only the migration tracking records and confirm the next dry run does not reapply the
+foundation. Do not rerun the foundation over the populated schema. See
+[Supabase migration troubleshooting](https://supabase.com/docs/guides/deployment/database-migrations#diagnosing-and-fixing-sync-errors).
 
 ## Accounts and costs
 
@@ -43,7 +54,7 @@ Rechecked on 2026-09-13: Render documents 750 free instance hours per workspace/
 3. Before modifying an existing project, export its data and inspect its migration history. The checked-in migration is intended for a fresh project; do not run it over another application's `app` schema. Use the Supabase CLI from the operator's machine, link to the selected project, review `supabase db push --dry-run`, then apply only the reviewed migration.
 4. Configure a generated password and LOGIN for `island_runtime` using the operator connection. Keep credentials in provider secrets or an ignored `.local/operator.env`, never in SQL committed to Git. The migration intentionally contains no login password. Verify the runtime has only the documented privileges, cannot DELETE state/logs, and that `anon`/`authenticated` cannot access `app`. Do not expose `app` through the Data API.
 
-Applied on 2026-09-13 for project `dybismsqbzubwzzfrnfo`: the migration and the full permission matrix are verified, `app` is confirmed unexposed through the Data API, and JWKS serves an ES256 key. Anonymous sign-ins and the `island_runtime` LOGIN are now done, and the runtime credential was verified against `aws-0-eu-central-1.pooler.supabase.com:5432`. The pooler's private root (`Supabase Root 2021 CA`) is committed at `apps/server/supabase-root-2021.crt` and trusted through `NODE_EXTRA_CA_CERTS` in the runtime image; the built image reaches the hosted database over verified TLS and reports ready. Confirm the certificate fingerprint against Database Settings → SSL Configuration, and set the same `NODE_EXTRA_CA_CERTS` when running operator retention from a laptop. See [Phase 7 evidence](phase-7-verification.md).
+Applied on 2026-09-13 for project `dybismsqbzubwzzfrnfo`: the migration and the full permission matrix are verified, `app` is confirmed unexposed through the Data API, and JWKS serves an ES256 key. Anonymous sign-ins and the `island_runtime` LOGIN are now done, and the runtime credential was verified against `aws-0-eu-central-1.pooler.supabase.com:5432`. The pooler's private roots are bundled at `apps/server/supabase-roots.crt` and trusted through `NODE_EXTRA_CA_CERTS` in the runtime image; the built image reaches the hosted database over verified TLS and reports ready. Both bundled certificates were independently matched against the official Supabase CLI repository. Set `NODE_EXTRA_CA_CERTS` to the absolute path of `apps/server/supabase-roots.crt` when running operator retention from a laptop. See [Phase 7 evidence](phase-7-verification.md).
 
 ## Render services
 
