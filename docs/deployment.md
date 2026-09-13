@@ -1,6 +1,32 @@
 # Free deployment and game-night operations
 
-Phase 7 preparation. No hosted URL is live yet. Follow the acceptance checklist in PLAN.md before inviting friends. Local artifacts built with `*.example.invalid` URLs verify packaging only and must be rebuilt with real public configuration.
+**The deployment is live.** Follow the acceptance checklist in PLAN.md before treating it as finished;
+real-device and separate-network acceptance is still open. Local artifacts built with
+`*.example.invalid` URLs verify packaging only and must be rebuilt with real public configuration.
+
+## What is currently deployed
+
+| Piece | Value |
+| --- | --- |
+| Web client | https://island-table-web.onrender.com |
+| API | https://island-table-api.onrender.com |
+| Render workspace / region | `Catan`, Frankfurt, both services on Free |
+| Supabase project | `dybismsqbzubwzzfrnfo`, eu-central-1 |
+| Database connection | Session pooler `aws-0-eu-central-1.pooler.supabase.com:5432`, user `island_runtime.<project_ref>` |
+| Auth | Anonymous sign-ins enabled; JWKS serves one ES256 key |
+| Auto-deploy | **Off** on both services, so a push never interrupts a game |
+
+Operator values live in ignored `.local/operator.env` (mode 600). Nothing secret belongs in this file
+or in Git. To redeploy after a push, trigger each service explicitly, or change an environment
+variable — Render redeploys automatically when env vars change.
+
+Two operational notes learned from the first deployment. A Blueprint sync deploys immediately on
+creation, before `sync: false` variables can be filled, so the first API deploy will fail with
+`API startup failed` until the variables exist — that message is deliberately vague and does not
+indicate a build problem. And the session pooler chains to a private `Supabase Root 2021 CA`, so
+verified TLS needs that certificate; it is committed at `apps/server/supabase-root-2021.crt` and
+trusted through `NODE_EXTRA_CA_CERTS` in the runtime image. Operator scripts run from a laptop need
+the same variable pointed at the same file.
 
 ## Accounts and costs
 

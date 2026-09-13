@@ -1,6 +1,6 @@
 # Private multiplayer board game — technical execution blueprint
 
-Status: **Phases 1–6 implemented with local evidence; physical-device acceptance remains open (P4.10). Phase 7 is in progress; hosted access and device acceptance are pending.**
+Status: **Phases 1–6 implemented with local evidence. Phase 7 in progress: hosted Supabase and both free Render services are live and preflight-clean, and a four-client game has been played through the deployment (P7.2 and P7.4 done, P7.3 partial). Physical devices, separate networks, a complete match, measured ingress and soak measurement remain open (P4.10, P7.3, P7.5–P7.10).**
 
 Prepared: 2026-09-08. Workspace: `/Users/miltos/Downloads/Catan`.
 

@@ -115,7 +115,7 @@ Stop the API/Flutter/static-server terminal processes with Ctrl+C. Run `npm run 
 | `supabase/migrations` | Private application schema, roles, constraints and permissions |
 | `tests/local` | Database and real Auth/gateway verification |
 
-Read [protocol decisions](docs/protocol.md), [pinned rules](packages/game-engine/RULES.md), [Phase 1 evidence](docs/phase-1-verification.md), [Phase 2 evidence](docs/phase-2-verification.md), [Phase 3 evidence](docs/phase-3-verification.md), [Phase 4 evidence](docs/phase-4-verification.md), [Phase 5 evidence](docs/phase-5-verification.md), [Phase 6 evidence](docs/phase-6-verification.md), and the full [execution plan](PLAN.md).
+Read [protocol decisions](docs/protocol.md), [pinned rules](packages/game-engine/RULES.md), [Phase 1 evidence](docs/phase-1-verification.md), [Phase 2 evidence](docs/phase-2-verification.md), [Phase 3 evidence](docs/phase-3-verification.md), [Phase 4 evidence](docs/phase-4-verification.md), [Phase 5 evidence](docs/phase-5-verification.md), [Phase 6 evidence](docs/phase-6-verification.md), [Phase 7 progress](docs/phase-7-verification.md), and the full [execution plan](PLAN.md).
 
 To verify API packaging locally (Docker Desktop and local Supabase running):
 
@@ -126,7 +126,22 @@ node scripts/check-docker.mjs
 
 This starts a temporary container on port 3300, checks non-root execution, readiness and authentication, then stops it. It uses development-mode local Auth, not hosted TLS.
 
-`render.yaml`, the API Dockerfile and `scripts/build-web.sh` prepare future deployment. Nothing is deployed in Phases 1–6. Render/Supabase hosted setup and real multiplayer acceptance remain later milestones.
+## Playing on the hosted deployment
+
+The free deployment is live: open **https://island-table-web.onrender.com**, enter a nickname, create a
+private table and share the invitation link with up to three friends.
+
+| Service | URL |
+| --- | --- |
+| Web client | https://island-table-web.onrender.com |
+| API | https://island-table-api.onrender.com |
+
+The API sleeps after 15 minutes idle, so the first person in takes about a minute to connect. Automatic
+deployment is off on purpose, so pushing to `main` never interrupts a game; deploy explicitly between
+sessions. Verify a deployment with `npm run hosted:preflight` (needs `API_URL`, `WEB_URL`,
+`SUPABASE_URL` and `SUPABASE_ANON_KEY`). See the [deployment runbook](docs/deployment.md) and
+[Phase 7 evidence](docs/phase-7-verification.md); real-device and separate-network acceptance is still
+open.
 
 ## Phase 2 operations
 
@@ -174,7 +189,7 @@ flutter run -t lib/preview.dart -d chrome --web-port=8081
 
 The practice entry point has nine scenarios and automated opponents using the real pure engine. It is excluded from `main.dart`; its rematch link is only a practice reset. Use `--dart-define=PRACTICE_URL=http://10.0.2.2:3001` on Android. Native practice interaction tests are in `integration_test/game_flow_test.dart`.
 
-See [Phase 4 verification](docs/phase-4-verification.md) [Phase 5 verification](docs/phase-5-verification.md), and [Phase 6 verification](docs/phase-6-verification.md) for evidence and platform limits. No hosted infrastructure, paid services or store publication are configured by this phase.
+See [Phase 4 verification](docs/phase-4-verification.md) [Phase 5 verification](docs/phase-5-verification.md), and [Phase 6 verification](docs/phase-6-verification.md) for evidence and platform limits. Hosted infrastructure is now configured on free tiers only; no paid service or store publication exists.
 
 ## Phase 7 deployment preparation
 

@@ -174,6 +174,49 @@ unmeasured default of 0; graceful shutdown and process replacement have not been
 no game has been played hosted; no native build is installed; and no backup/restore rehearsal has
 run. Free-instance idle suspension means the first request on game night takes roughly a minute.
 
+### Hosted four-client play-through — 2026-09-13 (Claude)
+
+Four independent browser contexts drove the deployed stack end to end through the real web client at
+https://island-table-web.onrender.com. Evidence toward P7.6/P7.7, **not** a claim that either passes.
+
+What ran: guest sign-in ×4, table creation, invitation link copied and used to join, seat and colour
+allocation, readiness, `START_GAME` creating a persisted game, all **16 setup placements**, a dice
+roll, then host abandonment.
+
+Setup order was **Theo, Noor, Leo, Mira → Mira, Leo, Noor, Theo** — the rotated seat order followed by
+its reverse with the last player placing twice consecutively, exactly as PLAN §3.3 requires, produced
+by the hosted engine rather than a local fixture.
+
+Durable state read back from hosted Postgres afterwards:
+
+| Value | Result |
+| --- | --- |
+| Buildings / roads | 8 / 8 — two each for four players |
+| Private hands | 4 |
+| Phase after rolling 2+4 | `ACTION` (production resolved; not a seven) |
+| Version / move logs | 18 / 19 |
+| After host abandon | `status=ABANDONED`, `active_slot=NULL` — slot released |
+| Page errors | none in any client |
+| Auth identities | exactly one per guest; no duplicate signups |
+
+**Observation worth keeping.** Readying four players in rapid succession makes the later
+`SET_READY` commands fail `STALE_VERSION`, because each ready bumps the room revision and the other
+clients have not yet received the new snapshot. The server is behaving correctly — this is the
+optimistic-concurrency check doing its job — and the client resynchronises so a second tap succeeds.
+Real players tapping seconds apart will rarely hit it, but on a slow connection it will look like the
+first tap "did nothing". Worth considering whether the lobby should retry a stale `SET_READY`
+automatically, since readiness is idempotent and carries no strategic decision, unlike a build or a
+trade where PLAN §1.7 deliberately requires a fresh human decision.
+
+Not covered by this run, and not implied by it: all four clients were Chrome contexts on one machine,
+so **separate networks and physical devices remain unverified**; no timed match; no game played to ten
+points; no hosted reconnect/recovery exercise; ingress hop count still unmeasured. P7.6 and P7.7 stay
+open.
+
+The driver script is kept out of the repository at `.local/hosted-playthrough.mjs`; promoting it
+alongside `scripts/check-game-web.mjs` would need its database assertions reworked, since the hosted
+runtime role deliberately cannot delete fixtures.
+
 ## Blocked or unverified gates
 
 | Gate | Missing evidence/input |
@@ -188,6 +231,30 @@ run. Free-instance idle suspension means the first request on game night takes r
 | P7.9 Operations | Hosted retention invocation and backup/restore rehearsal into an isolated test database. The runbook/tooling is prepared. |
 | P7.10 Final evidence | Service links, actual physical-device versions, acceptance logs and account quota settings. |
 
-Access checks: a Supabase MCP server is now configured and was used for provisioning (see above). The Supabase CLI still reports **“Access token not provided”**; no Render API credential/connector is configured. The in-app browser connection fails before accessing a dashboard (`sandboxPolicy` metadata error). No authenticated browser profile was read through an alternative path. The account-selection question remains unanswered.
+Access: Supabase and Render MCP servers are both configured and were used for provisioning and deployment. The Supabase CLI still reports **“Access token not provided”**, so migrations went through MCP `apply_migration` rather than `supabase db push`; the remote history records the same migration name as the checked-in file. No Render CLI is installed and none is needed.
 
-Next step: identify the intended Free Supabase project and Render workspace, authenticate through their supported login/connector flows, and carry out the runbook. Do not send database passwords, signing keys or access tokens in chat. Phase 7 stays open until the actual hosted/device gates pass.
+## Handoff — suggested order for the remaining Phase 7 work
+
+Phase 7 stays open. Nothing below is blocked on access any more; it is all acceptance work.
+
+1. **Confirm the committed CA out of band.** `apps/server/supabase-root-2021.crt` was extracted from
+   the live pooler chain because the public download 404s. Download the certificate from Database
+   Settings → SSL Configuration and check it matches SHA-256
+   `80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA`.
+   Until that is done the trust anchor is self-asserted.
+2. **Measure ingress and set `TRUSTED_PROXY_HOPS` (P7.3).** It is still the unmeasured default of `0`,
+   which means per-IP invitation limits may pool every player behind Render's address. Send differing
+   and forged forwarding headers from two controlled clients and count the real hops.
+3. **Exercise process replacement on Render (P7.3).** Start a synthetic game, redeploy, and confirm the
+   replacement fences the old writer and recovers the same game paused, as `tests/local/timers.test.mjs`
+   proves locally.
+4. **Play real matches (P7.6, P7.7).** Physical phones on separate networks, three and four seats, one
+   untimed and one timed. The browser play-through below covers none of that.
+5. **Native installation (P7.5)**, then **soak measurement (P7.8)**, **operations rehearsal (P7.9)**
+   including a hosted `hosted:retention` run and a backup/restore into an isolated database, and
+   finally **evidence collection (P7.10)**.
+
+Consider also the `SET_READY` stale-version observation recorded above — a small, self-contained client
+change if you agree with it.
+
+Never put database passwords, signing keys or access tokens in chat or in Git.

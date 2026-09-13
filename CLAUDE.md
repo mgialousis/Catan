@@ -6,9 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Island Table** — a private multiplayer base-game board game (working name; original presentation, no licensed assets). Flutter client (Web/iOS/Android) plus an authoritative NestJS/Socket.IO backend on Supabase PostgreSQL.
 
-`PLAN.md` is the approved execution blueprint and the source of truth for scope; it defines seven phases with exit gates. **Only Phase 1 (connection + protocol foundation) is implemented and authorized.** Rooms, lobbies, rules, timers and deployment are later phases — do not implement them without the user explicitly authorizing that phase. When work changes the plan's state, update `PLAN.md` checkboxes, `docs/phase-1-verification.md` (evidence) and `docs/protocol.md` (decisions) alongside the code.
+`PLAN.md` is the approved execution blueprint and the source of truth for scope; it defines seven phases with exit gates. **Phases 1–6 are implemented and locally verified; Phase 7 (deployment) is in progress.** Do not start work on a phase the user has not authorized. When work changes the plan's state, update the `PLAN.md` checkboxes, the matching `docs/phase-N-verification.md` (evidence) and `docs/protocol.md` (decisions) alongside the code. Tick a checkbox only for what is actually verified — narrowing a criterion to make it tickable is the user's call, not the implementer's.
 
-Nothing is deployed. `render.yaml`, `apps/server/Dockerfile` and `scripts/build-web.sh` are prepared but unvalidated against hosted services.
+**The stack is deployed and live** on free tiers (see `docs/deployment.md` and `docs/phase-7-verification.md`):
+
+| | |
+| --- | --- |
+| Web client | https://island-table-web.onrender.com |
+| API | https://island-table-api.onrender.com |
+| Database / Auth | Supabase project `dybismsqbzubwzzfrnfo` (eu-central-1) |
+
+Render auto-deploy is deliberately **off** (`autoDeployTrigger: "off"` in `render.yaml`), so a push never
+interrupts a game in progress; deploys are explicit. Free instances sleep after 15 minutes idle, so the
+first request takes about a minute. Hosted operator values live in ignored `.local/operator.env`.
 
 ## Commands
 
@@ -27,11 +37,17 @@ npm run dev:server        # builds, then runs apps/server/dist/main.js with --en
 ### Tests
 
 ```sh
-npm test                  # build + node --test over packages/*/test and apps/server/test (no services needed)
-npm run test:local        # build + node --test tests/local (needs local Supabase, .env and .local/test-env.json)
-npm run test:web          # Playwright/Chrome smoke against a static build served on 127.0.0.1:8080
-node scripts/check-docker.mjs   # after: docker build -f apps/server/Dockerfile -t island-table-api:phase1 .
+npm test                  # build + engine/protocol/server tests; no services needed
+npm run test:local        # local Supabase suite, wrapped by scripts/check-local-tests.mjs
+npm run test:container    # after: docker build -f apps/server/Dockerfile -t island-table-api:phase7 .
+npm run test:web          # Playwright/Chrome lobby smoke against a local static build on 127.0.0.1:8080
+npm run test:web:game     # four-client browser game; test:web:timers adds the timed variant
+npm run hosted:preflight  # readiness/version/cache/auth probe of a deployment (needs the four public URLs)
+npm run hosted:retention  # operator-only 30-day cleanup against a hosted database
 ```
+
+`test:local` fails the run if any of the six application tables changed row count, so a leaked test
+fixture cannot pass unnoticed. Both browser suites need the single active room slot free.
 
 Node tests import **compiled `dist/` output**, so a bare `node --test <file>` needs `npm run build` first:
 
@@ -60,7 +76,7 @@ Toolchain versions are pinned (`.nvmrc` 22.20.0, `.flutter-version` 3.38.8) and 
 apps/mobile        Flutter client; Riverpod providers in lib/core (config, connection, protocol, secure storage)
 apps/server        NestJS: config -> auth (JWT) -> gateway (Socket.IO /game) -> database (pg Pool)
 packages/protocol  Canonical draft-07 JSON Schema + events map + shared fixtures + pure TS contracts
-packages/game-engine  State partitions, phase-transition contract, owner projection (no rules yet)
+packages/game-engine  Pure rules engine: board generation, complete base-game commands, invariants, projections
 supabase/migrations   app schema, island_owner/island_runtime roles, RLS, constraints
 tests/local        Real local Postgres and real Auth/Socket.IO verification
 ```
@@ -81,9 +97,9 @@ Version identifiers appear in four places that must stay consistent: `PROTOCOL_V
 
 `CanonicalState` (game-engine) separates `publicState`, a player-keyed `privateState` map, server-only `serverState` (bank, deck, random outcomes) and `clockState`. Serialization is allowlisted: build outputs with explicit projection functions like `projectPlayer`, and produce deltas by diffing **already authorized projections** — never by diffing full secret state and filtering paths afterwards. The same boundary applies to logs, errors and reconnect responses. Schema validation of a patch is not proof of privacy or legality.
 
-### Server invariants (Phase 1 behavior worth preserving)
+### Server invariants worth preserving
 
-- The gateway fails closed. `session.subscribe`, `game.sync` and `game.version.request` return `FORBIDDEN` until Phase 2 introduces membership; `room.command`/`game.command` return `NOT_IMPLEMENTED` and deliberately never fabricate a commit receipt.
+- The gateway fails closed: every read and command path checks current membership under the room lock, and a rejection commits only a sanitized receipt — never a fabricated success. `apps/server/src/games.ts` follows the PLAN §1.5 lock order exactly (runtime fence → per-actor command advisory lock → receipt lookup → room row → game row), and the receipt is checked *before* version rejection.
 - Every packet is rate-limited, schema-validated against `events.client`, and re-authenticated (`auth.refresh` verifies the incoming token in its handler instead). Token expiry disconnects the socket.
 - Errors reaching clients go through `safeError()` — a fixed code/message allowlist. Never log payloads, tokens, SQL credentials or private state.
 - `loadConfig` strips `sslmode`/`sslcert`/`sslkey`/`sslrootcert` from `DATABASE_URL` so a connection string cannot silently disable TLS, and refuses `LOCAL_JWT_SECRET`, non-HTTPS issuers/JWKS, non-HTTPS origins or `DATABASE_TLS=false` when `NODE_ENV=production`. HS256 is a local-only fallback used when local Supabase has no JWKS keys.
@@ -101,3 +117,21 @@ Version identifiers appear in four places that must stay consistent: `PROTOCOL_V
 ## Repository hygiene
 
 Phase 1 deliberately performed no commits, pushes, hosted deployments or paid resource creation — the branch still has no commits. Keep secrets in the gitignored `.env`/`.local/`; `.env.example` carries names and placeholders only.
+
+## Tooling available in this workspace
+
+MCP servers are configured in the ignored `.mcp.json` and via plugins; they reach real infrastructure,
+so treat their write operations the way you would a production console.
+
+| Server | Reaches |
+| --- | --- |
+| `supabase` | The live project `dybismsqbzubwzzfrnfo` — SQL, migrations, advisors, logs |
+| `render` | The live `Catan` workspace — services, env vars, deploys, logs |
+| `dart-flutter` | Local analyze/test, plus launching and hot-reloading the app on a device |
+
+Prefer the Dart/Flutter MCP tools over shelling out to `flutter`. Note that automated layout tests
+catch *overflow*, not *wrongness*: running the app on a real device has caught defects a green suite
+missed, so verify visual work on a device or a rendered screenshot.
+
+Locally installed agent tooling (`.agents/`, `skills-lock.json`, `.mcp.json`, `.claude/skills/`) is
+gitignored and is not part of the pinned toolchain.
