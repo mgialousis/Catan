@@ -136,14 +136,52 @@ laptop needs `NODE_EXTRA_CA_CERTS` pointed at the same file.
 
 Render remains entirely unconfigured, so `npm run hosted:preflight` cannot run yet.
 
+## Hosted deployment — 2026-09-13 (Claude)
+
+Both free Render services in workspace `Catan` (Frankfurt) are live from commit `72d76f4`.
+
+| Service | URL |
+| --- | --- |
+| `island-table-api` (Docker web service, free) | https://island-table-api.onrender.com |
+| `island-table-web` (static site) | https://island-table-web.onrender.com |
+
+The first Blueprint sync deployed `35eb05c` and failed. Cause: the sync deploy started two seconds
+after the services were created, before any `sync: false` variable existed, so `loadConfig()` rejected
+the environment and exited 1. The deliberately vague `API startup failed` message is `main.ts`
+refusing to leak configuration detail; the build itself had succeeded. The pooler CA problem would
+have been the next failure behind it. Both are fixed.
+
+`npm run hosted:preflight` against the real URLs:
+
+```json
+{ "readiness": true, "unauthenticatedConnectionDenied": true,
+  "versionRequestMs": { "median": 77, "p95": 107 } }
+```
+
+Additional live checks beyond the preflight:
+
+| Probe | Result |
+| --- | --- |
+| `/health/ready` | `{"status":"ready"}` — verified TLS to the pooler with the trusted CA |
+| `/api/v1/version` | `protocolVersion 1`, `rulesVersion base-2020-v1` |
+| Socket.IO, valid anonymous token | `server.hello protocolVersion=1` — hosted JWKS fetch and ES256 verification work |
+| Socket.IO, invalid token | rejected `UNAUTHENTICATED` |
+| Socket.IO, `protocolVersion: 99` | rejected `PROTOCOL_UNSUPPORTED` |
+| Static entry point | HTTP 200 with `cache-control: no-cache` |
+
+Still unverified, and none of it is implied by the above: `TRUSTED_PROXY_HOPS` is still the
+unmeasured default of 0; graceful shutdown and process replacement have not been exercised on Render;
+no game has been played hosted; no native build is installed; and no backup/restore rehearsal has
+run. Free-instance idle suspension means the first request on game night takes roughly a minute.
+
 ## Blocked or unverified gates
 
 | Gate | Missing evidence/input |
 | --- | --- |
 | P7.1 Free accounts/regions | Supabase project and Render workspace selection/access. Current limits were researched, but account billing/allowances were not inspected. |
-| P7.2 Hosted migration/permissions | **Largely done** — migration applied and permissions verified on a confirmed-empty project (see above). Still open: `island_runtime` LOGIN, verified-TLS pooler connection from the API, and anonymous sign-ins. |
-| P7.3 API deploy | Render service access, restricted runtime connection, HTTPS JWKS verification and measured ingress hop count. |
-| P7.4 Static deploy | Real API/Auth/Web public configuration and published Render URL. Linux packaging is verified. |
+| P7.2 Hosted migration/permissions | **Done** — migration applied to a confirmed-empty project, permission matrix verified, runtime LOGIN granted, anonymous sign-ins enabled, verified-TLS connection proven from the deployed API. |
+| P7.3 API deploy | **Partial** — image deployed and live, restricted runtime connection and HTTPS JWKS verification both confirmed. Open: measured ingress hop count (`TRUSTED_PROXY_HOPS` still 0) and graceful shutdown/process replacement on Render. |
+| P7.4 Static deploy | **Done** — built with pinned Flutter from real public configuration and published at https://island-table-web.onrender.com with `no-cache` on the entry point. |
 | P7.5 Native installation | Real configuration, physical Android installation, Apple development team/provisioning and physical iPhone installation. |
 | P7.6–P7.7 Device games | Hosted mixed-client privacy/recovery scenario, full timed and untimed games with three/four seats across networks. |
 | P7.8 Performance | Warm command/convergence latency, reconnect and timer lag; two-hour four-client resource/DB growth measurements. |

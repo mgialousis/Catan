@@ -581,9 +581,9 @@ Verified locally: 216 Node tests, 56 local database/auth/gameplay checks, and 26
 Dependencies: prior exit gates; free hosting accounts and access to test devices.
 
 - [ ] P7.1 Recheck free-plan limits, select nearby Supabase/Render regions and configure free services/subdomains.
-- [ ] P7.2 Export any existing hosted data, apply reviewed migrations from the operator environment and verify permissions.
+- [x] P7.2 Export any existing hosted data, apply reviewed migrations from the operator environment and verify permissions. **Verified:** project confirmed empty (no export needed), migration applied, permission matrix and append-only guarantees checked against the hosted database.
 - [ ] P7.3 Build/deploy the API Docker image; configure secrets, port, health checks, origins and graceful shutdown.
-- [ ] P7.4 Build the Flutter web artifact with pinned tooling and public configuration; publish it as a Render static site.
+- [x] P7.4 Build the Flutter web artifact with pinned tooling and public configuration; publish it as a Render static site. **Verified:** live at https://island-table-web.onrender.com with `cache-control: no-cache`.
 - [ ] P7.5 Produce a signed Android APK and an iOS development build; document installation separately from hosting.
 - [ ] P7.6 Run the deployed multi-client scenario suite in Section 4, including mixed native/web clients.
 - [ ] P7.7 Play a complete untimed and timed match across separate networks with three and four seats covered.
