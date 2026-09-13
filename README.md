@@ -54,6 +54,12 @@ Socket.IO uses namespace `/game`, path `/socket.io`, and WebSocket transport. It
 
 ## Native targets
 
+Signed Android APKs are built automatically for changes to the app/build configuration on `main`.
+Open [Android APK builds](https://github.com/mgialousis/Catan/actions/workflows/android-apk.yml),
+select a successful run and download its `island-table-android-*` artifact. Extract the ZIP and
+install `island-table.apk`. These builds connect to the hosted game. You can also select
+**Run workflow** to request a fresh build. See [Android build setup](docs/android-builds.md).
+
 List device IDs with `flutter devices`, then from `apps/mobile`:
 
 ```sh

@@ -1,0 +1,120 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/protocol/**'
+      - 'scripts/sync-protocol.mjs'
+      - 'scripts/public-config.mjs'
+      - 'scripts/install-flutter-linux.sh'
+      - 'scripts/configure-android-ci.mjs'
+      - 'apps/server/test/android-ci.test.mjs'
+      - '.flutter-version'
+      - '.nvmrc'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Signing credentials are used only by the owner's main branch, never PRs or forks.
+    if: github.repository == 'mgialousis/Catan' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      API_URL: ${{ vars.API_URL }}
+      WEB_URL: ${{ vars.WEB_URL }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install pinned Flutter SDK
+        run: |
+          bash scripts/install-flutter-linux.sh
+          echo "$GITHUB_WORKSPACE/.local/flutter-3.38.8/bin" >> "$GITHUB_PATH"
+
+      - name: Validate public configuration and sync protocol
+        run: |
+          node scripts/public-config.mjs
+          node scripts/sync-protocol.mjs
+          node --test apps/server/test/android-ci.test.mjs
+
+      - name: Resolve locked Flutter dependencies
+        working-directory: apps/mobile
+        run: flutter pub get --enforce-lockfile
+
+      - name: Analyze and test Flutter
+        working-directory: apps/mobile
+        run: |
+          flutter analyze --no-pub
+          flutter test --no-pub --reporter expanded
+
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: node scripts/configure-android-ci.mjs
+
+      - name: Build release APK
+        working-directory: apps/mobile
+        run: >-
+          flutter build apk --release --no-pub
+          --build-number="$((1000 + GITHUB_RUN_NUMBER))"
+          --dart-define-from-file=config/ci.json
+
+      - name: Verify APK signature and prepare download
+        run: |
+          island_apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -n "$island_apksigner"
+          "$island_apksigner" verify --verbose apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+          mkdir -p apps/mobile/build/apk-artifact
+          cp apps/mobile/build/app/outputs/flutter-apk/app-release.apk apps/mobile/build/apk-artifact/island-table.apk
+          cd apps/mobile/build/apk-artifact
+          sha256sum island-table.apk > SHA256SUMS
+
+      - name: Upload signed APK
+        id: apk
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: island-table-android-${{ github.run_number }}
+          path: apps/mobile/build/apk-artifact/*
+          include-hidden-files: false
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Link download
+        env:
+          APK_ARTIFACT_URL: ${{ steps.apk.outputs.artifact-url }}
+        run: printf 'Download the signed APK from [this build artifact](%s).\n' "$APK_ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary signing files
+        if: always()
+        run: |
+          rm -f apps/mobile/android/key.properties apps/mobile/config/ci.json
+          rm -f "$RUNNER_TEMP/island-release.jks"
