@@ -4,12 +4,13 @@ import type { AppConfig } from './config.js';
 
 export class Database {
   readonly pool: Pool;
+  onUnavailable?: () => void;
   constructor(config: Pick<AppConfig, 'databaseUrl' | 'databaseTls'>) {
     this.pool = new Pool({ connectionString: config.databaseUrl, max: 5,
       connectionTimeoutMillis: 3000, idleTimeoutMillis: 10000,
       statement_timeout: 3000, query_timeout: 4000,
       ssl: config.databaseTls ? { rejectUnauthorized: true } : false });
-    this.pool.on('error', () => { console.error('Database connection unavailable'); });
+    this.pool.on('error', () => { this.onUnavailable?.(); console.error('Database connection unavailable'); });
   }
   async ready(): Promise<void> {
     const result = await this.pool.query('SELECT version, protocol_version, rules_version, current_user AS role FROM app.schema_migrations ORDER BY version DESC LIMIT 1');
@@ -19,7 +20,13 @@ export class Database {
     }
   }
   async transaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
+    let client: PoolClient;
+    try { client = await this.pool.connect(); } catch (error) { this.onUnavailable?.(); throw error; }
+    // pg emits errors on checked-out clients as well as rejecting their queries.
+    // Handle both paths, and never return a broken connection to the pool.
+    let connectionError: Error | undefined;
+    const lost = (error: Error) => { connectionError = error; this.onUnavailable?.(); };
+    client.on('error', lost);
     try {
       await client.query('BEGIN');
       await client.query("SET LOCAL idle_in_transaction_session_timeout = '5s'");
@@ -27,9 +34,11 @@ export class Database {
       await client.query('COMMIT');
       return result;
     } catch (error) {
+      const code = (error as {code?:string}).code ?? '';
+      if (/^(08|53|57P0)/.test(code) || ['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE'].includes(code) || /connection.*(closed|terminated)|query read timeout/i.test((error as Error).message)) this.onUnavailable?.();
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;
-    } finally { client.release(); }
+    } finally { client.release(connectionError); client.removeListener('error', lost); }
   }
   async onApplicationShutdown(): Promise<void> { await this.pool.end(); }
 }

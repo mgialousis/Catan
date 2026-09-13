@@ -1,0 +1,138 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:island_table/core/connection.dart';
+import 'package:island_table/game/controller.dart';
+import 'package:island_table/game/countdown.dart';
+import 'package:island_table/game/game_screen.dart';
+import 'game_model_test.dart' show uiProtocol, uiSnapshot;
+import 'game_test.dart' show FakePort;
+
+void main() {
+  test(
+    'countdown uses elapsed time and stale server samples cannot refund time',
+    () {
+      var elapsed = 0;
+      final clock = EstimatedServerClock(() => elapsed)
+        ..observe('2026-09-11T12:00:00Z');
+      const deadline = '2026-09-11T12:01:00Z';
+      expect(clock.secondsLeft(deadline), 60);
+      elapsed = 17250;
+      expect(clock.secondsLeft(deadline), 43);
+      clock.observe('2026-09-11T11:59:59Z');
+      expect(clock.secondsLeft(deadline), 43);
+      clock.observe('2026-09-11T12:00:20Z');
+      expect(clock.secondsLeft(deadline), 40);
+      elapsed = 80000;
+      expect(clock.secondsLeft(deadline), 0);
+    },
+  );
+  testWidgets('expired display waits for server and never sends a move', (
+    t,
+  ) async {
+    await t.pumpWidget(
+      const MaterialApp(
+        home: GameCountdown(
+          serverTime: '2026-09-11T12:00:00Z',
+          deadline: '2026-09-11T11:59:59Z',
+          discard: true,
+        ),
+      ),
+    );
+    expect(find.text('Time is up · waiting for the server'), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
+  });
+  testWidgets(
+    'a live timed owner snapshot renders the synchronized countdown',
+    (t) async {
+      t.view.physicalSize = const Size(430, 932);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      final port = FakePort(), saved = uiSnapshot('action');
+      saved['serverTime'] = '2026-09-11T12:00:00Z';
+      saved['publicState']['turnDeadline'] = '2026-09-11T12:01:00Z';
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [
+            gamePortProvider.overrideWithValue(port),
+            protocolProvider.overrideWithValue(uiProtocol),
+          ],
+          child: const MaterialApp(home: GameScreen(isHost: true)),
+        ),
+      );
+      await t.pump();
+      port.emit('connected', true);
+      port.emit('snapshot', saved);
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 300));
+      expect(find.text('Turn time · 1:00'), findsOneWidget);
+      expect(t.takeException(), isNull);
+      await t.pumpWidget(const SizedBox());
+    },
+  );
+  for (final host in [false, true]) {
+    testWidgets('host=$host has the appropriate pause and abandon controls', (
+      t,
+    ) async {
+      t.view.physicalSize = const Size(1200, 3000);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      final port = FakePort();
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [
+            gamePortProvider.overrideWithValue(port),
+            protocolProvider.overrideWithValue(uiProtocol),
+          ],
+          child: MaterialApp(home: GameScreen(isHost: host)),
+        ),
+      );
+      await t.pump();
+      port.emit('connected', true);
+      port.emit('snapshot', uiSnapshot('paused'));
+      await t.pumpAndSettle();
+      expect(find.text('Resume game'), host ? findsOneWidget : findsNothing);
+      expect(find.text('Abandon game'), host ? findsOneWidget : findsNothing);
+      if (host) {
+        await t.tap(find.text('Resume game'));
+        await t.pump();
+        expect(port.commands.single['type'], 'RESUME_GAME');
+      }
+      await t.pumpWidget(const SizedBox());
+    });
+  }
+  testWidgets(
+    'abandon confirmation can be cancelled and uses the displayed version',
+    (t) async {
+      t.view.physicalSize = const Size(1200, 3000);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      final port = FakePort(), saved = uiSnapshot('paused');
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [
+            gamePortProvider.overrideWithValue(port),
+            protocolProvider.overrideWithValue(uiProtocol),
+          ],
+          child: const MaterialApp(home: GameScreen(isHost: true)),
+        ),
+      );
+      await t.pump();
+      port.emit('connected', true);
+      port.emit('snapshot', saved);
+      await t.pumpAndSettle();
+      await t.tap(find.text('Abandon game'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Keep playing'));
+      await t.pumpAndSettle();
+      expect(port.commands, isEmpty);
+      await t.tap(find.text('Abandon game'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('End game for everyone'));
+      await t.pump();
+      expect(port.commands.single['type'], 'ABANDON_GAME');
+      expect(port.commands.single['expectedVersion'], saved['version']);
+      await t.pumpWidget(const SizedBox());
+    },
+  );
+}

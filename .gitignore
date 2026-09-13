@@ -13,3 +13,6 @@ supabase/.branches/
 apps/mobile/config/*.json
 !apps/mobile/config/*.example.json
 apps/mobile/assets/protocol/
+
+# Local IDE metadata
+.idea/

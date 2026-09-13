@@ -15,6 +15,7 @@
     "game.version": "gameVersion",
     "presence.update": "presence",
     "session.error": "error",
-    "server.restarting": "restarting"
+    "server.restarting": "restarting",
+    "session.membership": "membership"
   }
 }

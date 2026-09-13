@@ -1,10 +1,10 @@
 # Private multiplayer board game — technical execution blueprint
 
-Status: **Phase 1 implemented and locally verified. Awaiting user review before Phase 2.**
+Status: **Phases 1–6 implemented and locally verified; Claude Round 4 findings addressed. Physical-phone/Safari and hosted acceptance remain Phase 7 work.**
 
 Prepared: 2026-09-08. Workspace: `/Users/miltos/Downloads/Catan`.
 
-This document specifies the agreed Flutter, NestJS/TypeScript, Supabase, and Render implementation. The user approved the blueprint and proposed defaults and authorized **Phase 1 only**, using one agent. Phase 1 source and local verification are complete; later checklists remain future work. No hosted deployment is authorized for this phase. See [Phase 1 verification](docs/phase-1-verification.md), [protocol decisions](docs/protocol.md), and [local setup](README.md).
+This document specifies the agreed Flutter, NestJS/TypeScript, Supabase and Render implementation. The user authorized implementation through Phase 6 and requested review of Claude’s updated findings before continuing. Work uses one agent and local, free services. See [Phase 4 verification](docs/phase-4-verification.md), [Phase 5 verification](docs/phase-5-verification.md), [Phase 6 verification](docs/phase-6-verification.md), [protocol decisions](docs/protocol.md) and [local setup](README.md). Hosted deployment and Phase 7 await review.
 
 ## Scope and operating assumptions
 
@@ -481,18 +481,22 @@ Exit gate: all available targets compile; an authenticated Flutter client connec
 
 ### Phase 2 — Build nickname entry and private lobbies
 
-Dependencies: Phase 1 protocol, auth and database skeleton.
+Dependencies: Phase 1 protocol, auth and database skeleton. **Satisfied.**
 
-- [ ] P2.1 Restore/create anonymous sessions and present the nickname screen without an account form.
-- [ ] P2.2 Implement the shared transactional command service and durable receipts for room creation/joining.
-- [ ] P2.3 Implement code generation, hash lookup, collision retry, expiry, rotation and rate limits.
-- [ ] P2.4 Allocate seats atomically; normalize names and enforce unique colours, identities and occupied seats.
-- [ ] P2.5 Implement ready/unready, host settings, host transfer in a lobby and leave/rejoin behavior.
-- [ ] P2.6 Publish room snapshots and authenticated presence; preserve invitation context through first launch.
-- [ ] P2.7 Require 3–4 connected, ready players before starting; clear readiness on relevant lobby changes.
-- [ ] P2.8 Handle duplicate creation/join acknowledgements, a fifth join racing the fourth, and a join racing game start.
-- [ ] P2.9 Implement clean terminal lobby expiry/closure and the single-active-room constraint.
-- [ ] P2.10 Verify existing members can restore their own seats without exposing another member's credentials.
+Implementation and local lobby verification: 2026-09-09. See [Phase 2 evidence and review resolutions](docs/phase-2-verification.md). The cross-phase game-start race was completed and verified in Phase 5.
+
+- [x] P2.1 Restore/create anonymous sessions and present the nickname screen without an account form.
+- [x] P2.2 Implement the shared transactional command service and durable receipts for room creation/joining.
+- [x] P2.3 Implement code generation, hash lookup, collision retry, expiry, rotation and rate limits.
+- [x] P2.4 Allocate seats atomically; normalize names and enforce unique colours, identities and occupied seats.
+- [x] P2.5 Implement ready/unready, host settings, host transfer in a lobby and leave/rejoin behavior.
+- [x] P2.6 Publish room snapshots and authenticated presence; preserve invitation context through first launch.
+- [x] P2.7 Require 3–4 connected, ready players before starting; clear readiness on relevant lobby changes.
+- [x] P2.8 Handle duplicate creation/join acknowledgements, a fifth join racing the fourth, and a join racing game start. **Verified:** Phase 5 tests cover the real three-player start racing a fourth join.
+- [x] P2.9 Implement clean terminal lobby expiry/closure and the single-active-room constraint.
+- [x] P2.10 Verify existing members can restore their own seats without exposing another member's credentials.
+
+- [x] P2.11 Add operator-only 30-day terminal-room cleanup and receipt body compaction, preserving compact idempotency tombstones.
 
 Exit gate: four independent guest sessions join one private lobby; a fifth cannot take a seat; replaying create/join does not create duplicates; restarting the app restores the right member.
 
@@ -500,19 +504,21 @@ Exit gate: four independent guest sessions join one private lobby; a fifth canno
 
 Dependencies: stable state/protocol contracts; room and player identities.
 
-- [ ] P3.1 Generate the canonical board graph and verify hex, vertex, edge and port counts and adjacency.
-- [ ] P3.2 Add the standard random board generator with legal terrain/number counts, a valid nonadjacent red-number layout, and bounded generation attempts with a known legal fallback.
-- [ ] P3.3 Generate/persist starting turn order and implement forward/reverse settlement-and-road placement with one initial-resource grant per second settlement.
-- [ ] P3.4 Implement server dice, atomic production and bank-shortage handling by resource type.
-- [ ] P3.5 Implement the seven → discard barrier → robber move → victim/steal sequence.
-- [ ] P3.6 Implement paid roads, settlements, city upgrades, bank stock, finite pieces and harbour exchange rates.
-- [ ] P3.7 Implement nonbinding trade offers and atomic acceptance, always involving the active player.
-- [ ] P3.8 Implement development-card purchase, purchase-turn restrictions, the per-turn play limit and all card effects.
-- [ ] P3.9 Implement bounded Road Building continuation and the pre-roll return path for development effects.
-- [ ] P3.10 Implement Longest Road, Largest Army, hidden victory points and immediate own-turn victory checks.
-- [ ] P3.11 Implement typed effects, deterministic test randomness and server-generated production randomness.
-- [ ] P3.12 Implement explicit public/private projections and verify resource/card/piece invariants after every transition.
-- [ ] P3.13 Add hand-authored edge-case fixtures and seeded command-sequence invariant tests from Section 4.
+- [x] P3.1 Generate the canonical board graph and verify hex, vertex, edge and port counts and adjacency.
+- [x] P3.2 Add the standard random board generator with legal terrain/number counts, a valid nonadjacent red-number layout, and bounded generation attempts with a known legal fallback.
+- [x] P3.3 Generate/persist starting turn order and implement forward/reverse settlement-and-road placement with one initial-resource grant per second settlement.
+- [x] P3.4 Implement server dice, atomic production and bank-shortage handling by resource type.
+- [x] P3.5 Implement the seven → discard barrier → robber move → victim/steal sequence.
+- [x] P3.6 Implement paid roads, settlements, city upgrades, bank stock, finite pieces and harbour exchange rates.
+- [x] P3.7 Implement nonbinding trade offers and atomic acceptance, always involving the active player.
+- [x] P3.8 Implement development-card purchase, purchase-turn restrictions, the per-turn play limit and all card effects.
+- [x] P3.9 Implement bounded Road Building continuation and the pre-roll return path for development effects.
+- [x] P3.10 Implement Longest Road, Largest Army, hidden victory points and immediate own-turn victory checks.
+- [x] P3.11 Implement typed effects, deterministic test randomness and server-generated production randomness.
+- [x] P3.12 Implement explicit public/private projections and verify resource/card/piece invariants after every transition.
+- [x] P3.13 Add hand-authored edge-case fixtures and seeded command-sequence invariant tests from Section 4.
+
+Verified locally: 188 Node tests, 23 local integration checks and 132 Flutter tests pass. Four complete matches replay all 1,585 accepted commands exactly, including after JSONB-style object-key reordering. Starting order is retained in canonical state; database persistence is Phase 5. The engine accepts an explicit server clock/entropy adapter; live timers remain Phase 6. See [Phase 3 evidence](docs/phase-3-verification.md).
 
 Exit gate: the pure engine can complete a scripted three-player and four-player game through valid commands; core rule fixtures and conservation tests pass; no transport/database dependency exists in the engine.
 
@@ -520,33 +526,35 @@ Exit gate: the pure engine can complete a scripted three-player and four-player 
 
 Dependencies: lobby flow, board model, engine-backed view and protocol fixtures.
 
-- [ ] P4.1 Create the responsive board renderer using original visual assets and canonical topology IDs.
-- [ ] P4.2 Add pan/zoom, readable number tokens, ports, roads, buildings and robber interaction on small screens.
-- [ ] P4.3 Add player summaries with public card totals and an owner-only resource/development-card hand.
-- [ ] P4.4 Add phase-specific prompts for setup, rolling, discards, robber/victim selection and free roads.
-- [ ] P4.5 Add build selection with legal-target previews, resource cost display and final confirmation.
-- [ ] P4.6 Add explicit give/receive trade composition, target selection, offer responses, cancellation and bank trading.
-- [ ] P4.7 Add development-card purchase/play controls, private draw feedback and card-specific choices.
-- [ ] P4.8 Add public action history, pending-action feedback, unavailable-action reasons and accessible player identification.
-- [ ] P4.9 Add paused/reconnecting/result screens and a rematch invitation flow.
-- [ ] P4.10 Validate layout and gestures on narrow iPhones, Android phones, landscape and enlarged text settings.
+The board and game controls are implemented. Claude's UI contributions were reviewed and extended; see [Phase 4 verification](docs/phase-4-verification.md). Phase 5 now reaches this screen from the lobby and connects it to the production authenticated transport. The optional `preview.dart` entry point uses the pure engine on a separate loopback-only practice server, not embedded no-op snapshots; it remains excluded from `main.dart`.
+
+- [x] P4.1 Create the responsive board renderer using original visual assets and canonical topology IDs.
+- [x] P4.2 Add pan/zoom, readable number tokens, ports, roads, buildings and robber interaction on small screens.
+- [x] P4.3 Add player summaries with public card totals and an owner-only resource/development-card hand.
+- [x] P4.4 Add phase-specific prompts for setup, rolling, discards, robber/victim selection and free roads.
+- [x] P4.5 Add build selection with legal-target previews, resource cost display and final confirmation.
+- [x] P4.6 Add explicit give/receive trade composition, target selection, offer responses, cancellation and bank trading.
+- [x] P4.7 Add development-card purchase/play controls, private draw feedback and card-specific choices.
+- [x] P4.8 Add public action history, pending-action feedback, unavailable-action reasons and accessible player identification.
+- [x] P4.9 Add paused/reconnecting/result screens and a rematch invitation flow. The real host-only rematch command is connected in Phase 5.
+- [x] P4.10 Validate available narrow-phone layouts and gestures: automated portrait/landscape layouts at 1.0×/1.3×/2.0× text; 24 opened-modal cases; three interactive tests on Android and iPhone simulators, including pinch/pan. Physical phones and Safari remain explicitly unverified; simulator evidence does not substitute for the Phase 7 real-device acceptance gate.
 
 Exit gate: every supported command has a reachable, comprehensible UI; hidden hands never appear in another player's view; duplicate taps remain a single pending intent. A sample screenshot is not a substitute for an interactive play-through.
 
 ### Phase 5 — Connect gameplay to durable multiplayer state
 
-Dependencies: engine, lobbies, game UI and transaction service.
+Dependencies: engine, lobbies, game UI and transaction service. Implementation and evidence: [Phase 5 verification](docs/phase-5-verification.md). Available local platform checks and remaining physical-device limits are recorded there.
 
-- [ ] P5.1 Load game state under the prescribed room/game locks and invoke the pure engine through one command service.
-- [ ] P5.2 Commit state, move log, per-viewer outbox and receipt together; implement sanitized rule errors.
-- [ ] P5.3 Deliver combined public/private deltas only to verified membership subscriptions.
-- [ ] P5.4 Implement initial snapshot, snapshot/live-update handoff, version checks, gap recovery and bounded history pagination.
-- [ ] P5.5 Implement acknowledgement timeouts and bounded exponential retries using the original command ID.
-- [ ] P5.6 Preserve one pending intent per client across temporary transport loss; after an app reload, synchronize first and never manufacture an unknown replacement for a possibly committed command.
-- [ ] P5.7 Test forced failure before commit, after commit/before acknowledgement, and between outbox send/mark-published.
-- [ ] P5.8 Verify transactions for simultaneous trades, last stock/deck item, conflicting builds and game start.
-- [ ] P5.9 Verify public activity, error messages, snapshots, patches and logs with deliberately distinctive hidden-card fixtures.
-- [ ] P5.10 Verify token refresh and duplicate tabs for one guest cannot change ownership or bypass versions.
+- [x] P5.1 Load game state under the prescribed room/game locks and invoke the pure engine through one command service.
+- [x] P5.2 Commit state, move log, per-viewer outbox and receipt together; implement sanitized rule errors.
+- [x] P5.3 Deliver combined public/private deltas only to verified membership subscriptions.
+- [x] P5.4 Implement initial snapshot, snapshot/live-update handoff, version checks, gap recovery and bounded history pagination.
+- [x] P5.5 Implement acknowledgement timeouts and bounded exponential retries using the original command ID.
+- [x] P5.6 Preserve one pending intent per client across temporary transport loss; after an app reload, synchronize first and never manufacture an unknown replacement for a possibly committed command.
+- [x] P5.7 Test forced failure before commit, after commit/before acknowledgement, and between outbox send/mark-published.
+- [x] P5.8 Verify transactions for simultaneous trades, last stock/deck item, conflicting builds and game start.
+- [x] P5.9 Verify public activity, error messages, snapshots, patches and logs with deliberately distinctive hidden-card fixtures.
+- [x] P5.10 Verify token refresh and duplicate tabs for one guest cannot change ownership or bypass versions.
 
 Exit gate: four clients share one consistent persisted game; retries do not duplicate moves; disconnect/rejoin reconstructs the current authorized state; an unpublished committed update is recoverable.
 
@@ -554,17 +562,19 @@ Exit gate: four clients share one consistent persisted game; retries do not dupl
 
 Dependencies: Phase 5 transaction/recovery guarantees.
 
-- [ ] P6.1 Implement the persisted clock model, server-time synchronization and local display-only countdown.
-- [ ] P6.2 Implement the timer scheduler, deterministic timeout IDs, phase/generation guards and per-command deadline checks.
-- [ ] P6.3 Implement the timeout fallback table below, including a seven caused by an automatic roll.
-- [ ] P6.4 Implement per-player discard deadlines and suspension of the active player's budget while waiting for that barrier.
-- [ ] P6.5 Implement required-player disconnect pauses, manual pause, host transfer and explicit abandonment.
-- [ ] P6.6 Implement global/runtime-room epoch fencing, checkpoint heartbeats, graceful shutdown and boot recovery pauses.
-- [ ] P6.7 Implement recovery when the database is temporarily unavailable; hold actions until the persisted state can be confirmed.
-- [ ] P6.8 Test expiry/action races, delayed/duplicated timer jobs, disconnects during every required phase and process restarts.
-- [ ] P6.9 Verify that reconnection, opening a second tab, pausing, and changing the device clock cannot reset or speed up a stored timer.
+- [x] P6.1 Implement the persisted clock model, server-time synchronization and local display-only countdown.
+- [x] P6.2 Implement the timer scheduler, deterministic timeout IDs, phase/generation guards and per-command deadline checks.
+- [x] P6.3 Implement the timeout fallback table below, including a seven caused by an automatic roll. Set `clockState.turnExpired` only through the trusted, generation-checked timeout path; test Road Building expiry, including after one committed free road.
+- [x] P6.4 Implement per-player discard deadlines and suspension of the active player's budget while waiting for that barrier.
+- [x] P6.5 Implement required-player disconnect pauses, manual pause, host transfer and explicit abandonment.
+- [x] P6.6 Implement global/runtime-room epoch fencing, checkpoint heartbeats, graceful shutdown and boot recovery pauses.
+- [x] P6.7 Implement recovery when the database is temporarily unavailable; hold actions until the persisted state can be confirmed.
+- [x] P6.8 Test expiry/action races, delayed/duplicated timer jobs, disconnects during every required phase and process restarts.
+- [x] P6.9 Verify that reconnection, opening a second tab, pausing, and changing the device clock cannot reset or speed up a stored timer.
 
 Exit gate: a timed and untimed match survives network loss and backend restart; no timer skips required actions, creates an invalid state or processes the same fallback twice.
+
+Verified locally: 216 Node tests, 56 local database/auth/gameplay checks, and 260 Flutter tests. Timed and untimed saved games survive socket loss and runtime replacement. Tests cover every required phase, duplicate/stale timer jobs, exact clock budgets, mandatory fallback replay, corrupt-state refusal and database connection loss. Production Web, Android debug and iOS simulator builds succeed. See [Phase 6 evidence and remaining device limits](docs/phase-6-verification.md). Full human games across physical phones/networks remain Phase 7 acceptance.
 
 ### Phase 7 — Deploy and verify with four separate clients
 
@@ -684,15 +694,15 @@ Year of Plenty and Monopoly do not need partially committed choice-timeout state
 - A player is online when at least one currently authenticated socket for their membership is live. Losing one of several tabs does not disconnect the seat.
 - After the server detects the final socket loss, show offline presence. If that player must currently act, freeze the game and all running clocks in a transaction. If the deadline already expired before detection, the due timeout wins; no client-reported timestamp rewrites history.
 - If the absent player is not currently required, play can continue until their next required decision. When every player is offline, pause immediately on detection.
-- Pause reasons are a set: `MANUAL`, `DISCONNECT`, `SERVER_RECOVERY`, `DATABASE_RECOVERY`. Store exact remaining budgets when pausing. Reconnection can clear a disconnect reason but cannot clear a manual or recovery pause.
+- Pause reasons are a set: `MANUAL`, `DISCONNECTED`, `RECOVERY`, `DATABASE_UNAVAILABLE`. Store exact remaining budgets when pausing. Reconnection can clear a disconnect reason but cannot clear a manual or recovery pause.
 - Resume automatically only when the sole reason was disconnect and all currently required actors have returned. Manual/recovery pauses require host resume. Restoring a socket never grants a fresh full turn budget.
-- After the host has no socket for 10 seconds, transfer controls to the connected member with the lowest seat index; if none are connected, the first returning eligible member becomes host. This changes the room revision, not turn order or hand ownership. Lobby and in-game transfer use the same ownership rules.
+- After the host has no socket for 10 seconds, transfer controls to the connected member with the lowest seat index; if none are connected, retain a valid host reference until an eligible member returns, then transfer after the remaining absence grace. If a host voluntarily leaves the lobby, choose the lowest connected seat immediately, or the lowest occupied seat as the fallback reference. This changes the room revision, not turn order or hand ownership. Lobby and in-game transfer use the same ownership rules.
 - Any explicit pause or abandon command requires host authorization and is logged. The host can wait, resume when requirements are met, or abandon without a winner. There is no AI substitution or automatic removal of a started-game player.
 - Keeping a game paused and closing the app is the save-session flow. The same stored guest identities can resume it later; the active-room slot remains occupied until completion/abandonment.
 
 ### 3.6 Server restart, database outage and runtime fencing
 
-Render can replace a process, so timers cannot depend solely on in-memory callbacks. On each boot, create a unique process epoch. In startup recovery, take an exclusive lock on `runtime_control`, replace its active epoch, then claim ongoing rooms under their row locks and pause active matches with `SERVER_RECOVERY`. Update each room's `runtime_epoch` in that transaction. Normal mutations hold the runtime-control shared lock before taking command/room/game locks, so takeover waits for in-flight commits and fences subsequent old-process writes, including creation of a new room. Heartbeat/scheduler work follows the same epoch ownership check. This singleton ownership scheme is explicitly for the one-process release; horizontal scaling requires redesigning ownership and message distribution.
+Render can replace a process, so timers cannot depend solely on in-memory callbacks. On each boot, create a unique process epoch. In startup recovery, take an exclusive lock on `runtime_control`, replace its active epoch, then claim ongoing rooms under their row locks and pause active matches with `RECOVERY`. Update each room's `runtime_epoch` in that transaction. Normal mutations hold the runtime-control shared lock before taking command/room/game locks, so takeover waits for in-flight commits and fences subsequent old-process writes, including creation of a new room. Heartbeat/scheduler work follows the same epoch ownership check. This singleton ownership scheme is explicitly for the one-process release; horizontal scaling requires redesigning ownership and message distribution.
 
 While a game is active, persist an operational heartbeat at most once every 15 seconds with a matching epoch. This is not a gameplay move/version. On an ungraceful restart, freeze clocks using the last trusted heartbeat, bounded by the clock's own start time and original remaining budget. This friend-game recovery policy may refund up to roughly one checkpoint interval of thinking time; it does not run several unattended timeout turns during downtime. Store the recovery adjustment in a system move log.
 
@@ -706,8 +716,8 @@ If the database is unavailable, reject new mutations with a retryable service er
 
 | Layer | Proposed tooling | Boundary |
 | --- | --- | --- |
-| Pure engine and projections | Vitest, seeded generators/property checks | No real network, database or wall clock; explicit random and clock inputs |
-| Command service and persistence | Vitest/NestJS test harness with local Supabase/PostgreSQL | Real transactions, constraints, RLS, receipts, logs and outbox |
+| Pure engine and projections | Node's built-in test runner, seeded generators/property checks | No real network, database or wall clock; explicit random and clock inputs |
+| Command service and persistence | Node's built-in test runner/NestJS test harness with local Supabase/PostgreSQL | Real transactions, constraints, RLS, receipts, logs and outbox |
 | Gateway and auth | Real Socket.IO clients against a test backend | Token/room authorization, message schemas, ordering, reconnect and expiry |
 | Flutter units/widgets | `flutter test`, provider overrides and synthetic fixtures | State reduction, commands, patch application, navigation and interactive UI |
 | Flutter integration | Flutter integration tests and device/browser play-throughs | Real backend connection, gestures, suspend/resume and mixed platforms |
@@ -825,7 +835,8 @@ Native installation is separate from hosting. Android can be distributed as an A
 4. **Create the Render Free web service.** Use the repository root as Docker build context so workspace packages are available; point to the future `apps/server/Dockerfile`. Select one instance, set `PORT` binding, production mode, database runtime secret, auth verification configuration and explicit web origins.
 5. **Deploy and check health.** Verify HTTPS and a real Socket.IO handshake on `/socket.io` with namespace `/game`. Check readiness, denied unauthenticated requests and redacted logs. A health endpoint returning 200 alone is insufficient.
 6. **Verify runtime recovery.** Start a synthetic game, commit a move, restart the service, and verify a fenced recovery pause with the same board, hands and pending decision. Retry the last command ID and confirm no duplicate.
-7. **Enable ordinary use.** Publish the client only after API compatibility and privacy checks pass. Disable automatic game-disrupting deployments during a session; pause and deploy between games whenever possible.
+7. **Prepare retention operations (Phase 7 prerequisite).** Build a reviewed hosted operator entry point around `retain(db, options)`; the current `scripts/retention.mjs` CLI is deliberately local-only. Run it from the operator’s machine using the privileged migration/maintenance database credential held outside the repository and verified TLS. Preview with dry-run, review eligible terminal rooms/receipts, then explicitly apply; preserve replay tombstones and never target an active game. Record before/after counts. A paid cron service is not required. Hosted invocation and permissions must be verified before launch.
+8. **Enable ordinary use.** Publish the client only after API compatibility and privacy checks pass. Disable automatic game-disrupting deployments during a session; pause and deploy between games whenever possible.
 
 ### 4.8 Flutter Web deployment to Render static hosting
 
@@ -896,4 +907,4 @@ The stack, private rooms, live base-game play, nickname entry and free initial c
 | Paused game capacity | A paused game retains the one active slot until resumed, completed or explicitly abandoned |
 | Terminal data | Keep completed records for 30 days, with explicit maintenance/export before cleanup |
 
-Next action: **wait for the user's review of Phase 1 before implementing Phase 2.** No hosted infrastructure was deployed. See [verification evidence and limits](docs/phase-1-verification.md).
+Next action: **review Phase 6 before authorizing Phase 7 (hosted deployment and device acceptance).** No hosted infrastructure has been deployed. See [Phase 6 verification](docs/phase-6-verification.md).

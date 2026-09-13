@@ -2,6 +2,13 @@ import { Inject } from '@nestjs/common';
 import { WebSocketGateway, SubscribeMessage, ConnectedSocket, MessageBody } from '@nestjs/websockets';
 import type { Namespace, Socket } from 'socket.io';
 import { isValid, isClientPayload, events, MAX_COMMAND_BYTES, PROTOCOL_VERSION, type Command, type SafeError } from '@island/protocol';
+import { clientAddress } from './client-address.js';
+import type { AppConfig } from './config.js';
+import { Games } from './games.js';
+import { Rooms } from './rooms.js';
+import { LobbyError } from './lobby-policy.js';
+import { safeError } from './errors.js';
+export { safeError } from './errors.js';
 import { TokenVerifier, AuthFailure, type Identity } from './auth.js';
 
 export class WindowLimiter {
@@ -17,22 +24,13 @@ export class WindowLimiter {
     return ++window.count <= this.maximum;
   }
 }
-export function safeError(code: string, requestId?: unknown): SafeError {
-  const messages: Record<string, string> = {
-    UNAUTHENTICATED: 'Please reconnect to authenticate.', TOKEN_EXPIRED: 'Your session needs to refresh.',
-    INVALID_PAYLOAD: 'The request format is invalid.', PROTOCOL_UNSUPPORTED: 'Please update the client.',
-    FORBIDDEN: 'This room is unavailable.', RATE_LIMITED: 'Please wait before trying again.',
-    NOT_IMPLEMENTED: 'Room and game actions arrive in a later phase.', SERVICE_UNAVAILABLE: 'Please try again shortly.',
-  };
-  return { code, message: messages[code] ?? 'The request could not be completed.',
-    retryable: ['TOKEN_EXPIRED', 'RATE_LIMITED', 'SERVICE_UNAVAILABLE'].includes(code),
-    ...(isValid('uuid', requestId) ? { requestId: requestId as string } : {}) };
-}
 
 @WebSocketGateway({ namespace: '/game' })
 export class GameGateway {
   private readonly commands = new WindowLimiter(120);
-  constructor(@Inject(TokenVerifier) private readonly auth: TokenVerifier) {}
+  private readonly invitations = new WindowLimiter(20);
+  private readonly invitationIps = new WindowLimiter(100);
+  constructor(@Inject(TokenVerifier) private readonly auth: TokenVerifier, @Inject(Rooms) private readonly rooms: Rooms, @Inject(Games) private readonly games: Games, @Inject('APP_CONFIG') private readonly config: AppConfig) {}
 
   afterInit(namespace: Namespace): void {
     namespace.use(async (socket, next) => {
@@ -42,15 +40,17 @@ export class GameGateway {
           throw Object.assign(new Error('Connection rejected'), { data: safeError(code) });
         }
         const identity = await this.auth.verify(socket.handshake.auth.accessToken);
+        await this.rooms.ready();
         socket.data.identity = identity;
         socket.data.accessToken = socket.handshake.auth.accessToken;
         next();
       } catch (error) {
-        next(Object.assign(new Error('Connection rejected'), { data: error instanceof AuthFailure ? safeError(error.code) : (error as { data?: SafeError }).data ?? safeError('UNAUTHENTICATED') }));
+        next(Object.assign(new Error('Connection rejected'), { data: error instanceof AuthFailure || error instanceof LobbyError ? safeError(error.code) : (error as { data?: SafeError }).data ?? safeError('UNAUTHENTICATED') }));
       }
     });
   }
   handleConnection(socket: Socket): void {
+    this.rooms.attach(socket);
     this.expireAt(socket, socket.data.identity as Identity);
     socket.use(async ([event, payload], next) => {
       try {
@@ -67,9 +67,10 @@ export class GameGateway {
       }
     });
     socket.on('error', () => undefined); // Never log Socket.IO payloads, tokens or private state.
+    void this.rooms.subscribe(socket).catch(() => socket.emit('session.error', safeError('SERVICE_UNAVAILABLE')));
     socket.emit('server.hello', { protocolVersion: PROTOCOL_VERSION, serverTime: new Date().toISOString(), heartbeatIntervalMs: 25000, maxCommandBytes: MAX_COMMAND_BYTES });
   }
-  handleDisconnect(socket: Socket): void { clearTimeout(socket.data.expiryTimer); }
+  handleDisconnect(socket: Socket): void { clearTimeout(socket.data.expiryTimer); this.rooms.disconnect(socket); }
   private expireAt(socket: Socket, identity: Identity): void {
     clearTimeout(socket.data.expiryTimer);
     socket.data.expiryTimer = setTimeout(() => {
@@ -86,6 +87,7 @@ export class GameGateway {
       socket.data.identity = identity;
       socket.data.accessToken = payload.accessToken;
       this.expireAt(socket, identity);
+      await this.rooms.subscribe(socket);
       return { status: 'ACCEPTED', serverTime: new Date().toISOString() };
     } catch (error) {
       socket.emit('session.error', safeError(error instanceof AuthFailure ? error.code : 'UNAUTHENTICATED'));
@@ -94,21 +96,32 @@ export class GameGateway {
     }
   }
   @SubscribeMessage('room.command')
-  roomCommand(@MessageBody() command: Command) { return this.unimplemented(command, 'ROOM'); }
-  @SubscribeMessage('game.command')
-  gameCommand(@MessageBody() command: Command) { return this.unimplemented(command, 'GAME'); }
-  private unimplemented(command: Command, scope: 'ROOM' | 'GAME') {
-    // No mutations or durable receipts exist in Phase 1. Never acknowledge a fictitious commit.
-    return { commandId: command.commandId, status: 'REJECTED', scope, roomId: command.roomId, version: null, error: safeError('NOT_IMPLEMENTED'), serverTime: new Date().toISOString() };
+  async roomCommand(@ConnectedSocket() socket: Socket, @MessageBody() command: Command) {
+    if (['CREATE_ROOM', 'CREATE_REMATCH', 'JOIN_ROOM', 'ROTATE_INVITATION'].includes(command.type) && (!this.invitations.allow(socket.data.identity.userId) || !this.invitationIps.allow(clientAddress(socket.handshake.address, socket.handshake.headers['x-forwarded-for'], this.config.trustedProxyHops)))) {
+      return { commandId: command.commandId, status: 'REJECTED', scope: 'ROOM', roomId: command.roomId, version: null, error: safeError('RATE_LIMITED'), serverTime: new Date().toISOString() };
+    }
+    const ack = await this.rooms.command(socket.data.identity.userId, command);
+    if (ack.status === 'ACCEPTED' && ack.roomId && command.type !== 'LEAVE_LOBBY') {
+      // A failed post-commit subscription must never replace a durable acknowledgement.
+      await this.rooms.subscribe(socket, ack.roomId).catch(() => socket.emit('session.error', safeError('SERVICE_UNAVAILABLE')));
+    }
+    return ack;
   }
+  @SubscribeMessage('game.command')
+  gameCommand(@ConnectedSocket() socket: Socket, @MessageBody() command: Command) { return this.games.command(socket.data.identity.userId, command); }
   @SubscribeMessage('session.subscribe')
-  subscribe(@ConnectedSocket() socket: Socket, @MessageBody() payload: { requestId: string }) { this.forbidden(socket, payload.requestId); }
+  async subscribe(@ConnectedSocket() socket: Socket, @MessageBody() payload: { requestId: string; roomId: string; lastRoomRevision: number | null }) {
+    try { await this.rooms.subscribe(socket, payload.roomId, payload.lastRoomRevision); }
+    catch (error) { socket.emit('session.error', safeError(error instanceof LobbyError ? error.code : 'SERVICE_UNAVAILABLE', payload.requestId)); }
+  }
   @SubscribeMessage('game.sync')
-  sync(@ConnectedSocket() socket: Socket, @MessageBody() payload: { requestId: string }) { this.forbidden(socket, payload.requestId); }
+  async sync(@ConnectedSocket() socket: Socket, @MessageBody() payload: { requestId: string; roomId: string }) {
+    try { await this.games.subscribe(socket, payload.roomId, true); }
+    catch (error) { socket.emit('session.error', safeError(error instanceof LobbyError ? error.code : 'SERVICE_UNAVAILABLE', payload.requestId)); }
+  }
   @SubscribeMessage('game.version.request')
-  version(@ConnectedSocket() socket: Socket) { this.forbidden(socket); }
-  private forbidden(socket: Socket, requestId?: string): void {
-    // Until Phase 2 introduces membership, no socket may subscribe or read room data.
-    socket.emit('session.error', safeError('FORBIDDEN', requestId));
+  async version(@ConnectedSocket() socket: Socket, @MessageBody() payload: { roomId: string }) {
+    try { await this.games.version(socket, payload.roomId); }
+    catch (error) { socket.emit('session.error', safeError(error instanceof LobbyError ? error.code : 'SERVICE_UNAVAILABLE')); }
   }
 }

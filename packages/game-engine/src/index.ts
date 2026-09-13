@@ -24,7 +24,8 @@ export interface CanonicalState {
   readonly privateState: Readonly<Record<string, PlayerPrivateState>>;
   readonly serverState: {
     readonly bank: Resources; readonly developmentDeck: readonly DevelopmentCard[];
-    readonly playedCards: readonly DevelopmentCard[];
+    readonly playedCards: readonly (DevelopmentCard & { readonly ownerPlayerId: string })[];
+    readonly turnOrder: readonly string[];
     readonly setup: { readonly snakeOrder: readonly string[]; readonly position: number; readonly pendingVertexId: string | null; readonly grantedTo: readonly string[] } | null;
     readonly effect: { readonly kind: 'ROBBER' | 'ROAD_BUILDING' | 'DISCARD'; readonly continuation: 'AWAIT_ROLL' | 'ACTION'; readonly eligiblePlayerIds: readonly string[]; readonly remainingRoads: number } | null;
   };
@@ -58,3 +59,10 @@ export function projectPlayer(state: CanonicalState, playerId: string): PlayerPr
     totalPoints: hand.totalPoints, discardRequired: hand.discardRequired,
   };
 }
+
+export * from './random.js';
+export * from './board.js';
+export * from './rules.js';
+export * from './invariants.js';
+export * from './engine.js';
+export * from './projection.js';

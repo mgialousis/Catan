@@ -1,5 +1,7 @@
 # Phase 1 verification — 2026-09-09
 
+Historical checkpoint: the user subsequently approved Phase 2. See [the current Phase 2 report](phase-2-verification.md) for later changes and authorization status.
+
 Scope: **P1.1–P1.10 only**, implemented by one agent. The user approved PLAN.md and its proposed defaults before source creation. No hosted infrastructure, paid resources, store publication, commits or remote pushes were performed.
 
 ## Milestone evidence

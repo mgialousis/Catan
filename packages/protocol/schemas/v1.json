@@ -204,7 +204,13 @@
             "PROTOCOL_UNSUPPORTED",
             "SERVICE_UNAVAILABLE",
             "INVALID_PAYLOAD",
-            "NOT_IMPLEMENTED"
+            "NOT_IMPLEMENTED",
+            "INVALID_NICKNAME",
+            "COLOUR_TAKEN",
+            "PLAYERS_NOT_READY",
+            "GAME_NOT_AVAILABLE",
+            "MEMBERSHIP_ENDED",
+            "TIMED_MODE_UNAVAILABLE"
           ]
         },
         "message": {
@@ -307,7 +313,9 @@
             },
             "invitationCode": {
               "type": "string",
-              "pattern": "^[0-9A-HJKMNP-TV-Z]{10}$"
+              "minLength": 10,
+              "maxLength": 32,
+              "pattern": "^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z\\s-]+$"
             }
           },
           "required": [
@@ -2870,6 +2878,14 @@
           "propertyNames": {
             "pattern": "^[a-zA-Z0-9_-]{1,80}$"
           }
+        },
+        "winnerVictoryPointCardIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/uuid"
+          },
+          "maxItems": 5,
+          "uniqueItems": true
         }
       },
       "required": [
@@ -2893,7 +2909,8 @@
         "turnDeadline",
         "discardDeadlines",
         "winnerPlayerId",
-        "finalPoints"
+        "finalPoints",
+        "winnerVictoryPointCardIds"
       ],
       "additionalProperties": false
     },
@@ -2955,7 +2972,7 @@
               "path": {
                 "type": "string",
                 "maxLength": 256,
-                "pattern": "^(?!.*(?:/)(?:__proto__|prototype|constructor)(?:/|$))/(board|roads|buildings|robberHexId|players|phase|phaseId|turnNumber|activePlayerId|requiredPlayerIds|hasRolled|developmentCardPlayedThisTurn|dice|trades|longestRoad|largestArmy|pauseReasons|turnDeadline|discardDeadlines|winnerPlayerId|finalPoints)(/[a-zA-Z0-9_-]{1,80})*$"
+                "pattern": "^(?!.*(?:/)(?:__proto__|prototype|constructor)(?:/|$))/(board|roads|buildings|robberHexId|players|phase|phaseId|turnNumber|activePlayerId|requiredPlayerIds|hasRolled|developmentCardPlayedThisTurn|dice|trades|longestRoad|largestArmy|pauseReasons|turnDeadline|discardDeadlines|winnerPlayerId|winnerVictoryPointCardIds|finalPoints)(/[a-zA-Z0-9_-]{1,80})*$"
               },
               "value": {}
             },
@@ -2975,7 +2992,7 @@
               "path": {
                 "type": "string",
                 "maxLength": 256,
-                "pattern": "^(?!.*(?:/)(?:__proto__|prototype|constructor)(?:/|$))/(board|roads|buildings|robberHexId|players|phase|phaseId|turnNumber|activePlayerId|requiredPlayerIds|hasRolled|developmentCardPlayedThisTurn|dice|trades|longestRoad|largestArmy|pauseReasons|turnDeadline|discardDeadlines|winnerPlayerId|finalPoints)(/[a-zA-Z0-9_-]{1,80})*$"
+                "pattern": "^(?!.*(?:/)(?:__proto__|prototype|constructor)(?:/|$))/(board|roads|buildings|robberHexId|players|phase|phaseId|turnNumber|activePlayerId|requiredPlayerIds|hasRolled|developmentCardPlayedThisTurn|dice|trades|longestRoad|largestArmy|pauseReasons|turnDeadline|discardDeadlines|winnerPlayerId|winnerVictoryPointCardIds|finalPoints)(/[a-zA-Z0-9_-]{1,80})*$"
               }
             },
             "required": [
@@ -3222,6 +3239,22 @@
           "additionalProperties": false
         }
       ]
+    },
+    "membership": {
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "$ref": "#/definitions/uuid"
+        },
+        "playerId": {
+          "$ref": "#/definitions/uuid"
+        }
+      },
+      "required": [
+        "roomId",
+        "playerId"
+      ],
+      "additionalProperties": false
     }
   }
 }

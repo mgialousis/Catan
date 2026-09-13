@@ -1,5 +1,6 @@
 export interface AppConfig {
   port: number; databaseUrl: string; databaseTls: boolean; origins: string[];
+  trustedProxyHops: number;
   issuer: string; jwksUrl: string; localJwtSecret?: string;
 }
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -29,5 +30,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (production && !databaseTls) throw new Error('Production requires database TLS');
   const port = Number(env.PORT ?? 3000);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid port');
-  return { port, databaseUrl, databaseTls, origins, issuer, jwksUrl, localJwtSecret: env.LOCAL_JWT_SECRET };
+  const trustedProxyHops = Number(env.TRUSTED_PROXY_HOPS ?? 0);
+  if (!Number.isInteger(trustedProxyHops) || trustedProxyHops < 0 || trustedProxyHops > 4) throw new Error('Invalid trusted proxy hop count');
+  return { trustedProxyHops, port, databaseUrl, databaseTls, origins, issuer, jwksUrl, localJwtSecret: env.LOCAL_JWT_SECRET };
 }

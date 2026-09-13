@@ -53,5 +53,5 @@ export interface PublicState {
   readonly largestArmy: { readonly holderPlayerId: string | null; readonly size: number };
   readonly pauseReasons: readonly ('MANUAL' | 'DISCONNECTED' | 'RECOVERY' | 'DATABASE_UNAVAILABLE')[];
   readonly turnDeadline: string | null; readonly discardDeadlines: Readonly<Record<string, string>>;
-  readonly winnerPlayerId: string | null; readonly finalPoints: Readonly<Record<string, number>>;
+  readonly winnerPlayerId: string | null; readonly winnerVictoryPointCardIds: readonly string[]; readonly finalPoints: Readonly<Record<string, number>>;
 }

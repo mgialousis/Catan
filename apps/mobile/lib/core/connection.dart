@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -52,7 +54,71 @@ final connectionProvider =
 
 class ConnectionController extends Notifier<ConnectionView> {
   io.Socket? _socket;
+  final _events = StreamController<MapEntry<String, dynamic>>.broadcast(
+    sync: true,
+  );
+  Stream<MapEntry<String, dynamic>> get events => _events.stream;
+  String? get subject => _subject;
+  void subscribeRoom(String roomId, {int? lastRevision}) {
+    _socket?.emit('session.subscribe', {
+      'requestId': const Uuid().v4(),
+      'roomId': roomId,
+      'lastRoomRevision': lastRevision,
+      'lastGameVersion': null,
+    });
+  }
+
+  Future<Map<String, dynamic>> sendCommand(Map<String, dynamic> command) async {
+    final socket = _socket;
+    if (socket == null || !socket.connected) throw StateError('Disconnected');
+    final result = Completer<Map<String, dynamic>>();
+    socket.emitWithAck(
+      command['expectedPhaseId'] == null ? 'room.command' : 'game.command',
+      command,
+      ack: (value) {
+        if (!result.isCompleted &&
+            ref.read(protocolProvider).accepts('ack', value)) {
+          result.complete(Map<String, dynamic>.from(value as Map));
+        }
+      },
+    );
+    return result.future.timeout(const Duration(seconds: 8));
+  }
+
+  void syncGame(String roomId, int? version) => _socket?.emit('game.sync', {
+    'requestId': const Uuid().v4(),
+    'roomId': roomId,
+    'lastGameVersion': version,
+  });
+  void checkGameVersion(String roomId) =>
+      _socket?.emit('game.version.request', {'roomId': roomId});
+  Future<Map<String, dynamic>> history(String roomId, int? before) async {
+    final subject = _subject;
+    final session = ref.read(supabaseProvider).auth.currentSession;
+    if (subject == null || session?.user.id != subject) {
+      throw StateError('Session changed');
+    }
+    final uri =
+        Uri.parse(
+          '${ref.read(configProvider).apiUrl}/api/v1/rooms/$roomId/activity',
+        ).replace(
+          queryParameters: {
+            'limit': '30',
+            if (before != null) 'before': '$before',
+          },
+        );
+    final response = await http
+        .get(uri, headers: {'Authorization': 'Bearer ${session!.accessToken}'})
+        .timeout(const Duration(seconds: 8));
+    if (_disposed || _subject != subject || response.statusCode != 200) {
+      throw StateError('History unavailable');
+    }
+    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
+  }
+
   StreamSubscription<AuthState>? _authSubscription;
+  Timer? _restartTimer;
+  bool _recoveringServer = false;
   bool _disposed = false;
   String? _subject;
   final _instanceId = const Uuid().v4();
@@ -61,7 +127,9 @@ class ConnectionController extends Notifier<ConnectionView> {
     ref.onDispose(() {
       _disposed = true;
       _authSubscription?.cancel();
+      _restartTimer?.cancel();
       _socket?.dispose();
+      _events.close();
     });
     return const ConnectionView(
       ConnectionStatus.idle,
@@ -94,6 +162,8 @@ class ConnectionController extends Notifier<ConnectionView> {
               final next = event.session;
               if (next == null) {
                 _socket?.dispose();
+                _subject = null;
+                _events.add(const MapEntry('session.revoked', null));
                 state = const ConnectionView(
                   ConnectionStatus.failed,
                   'Your session ended. Connect again to continue.',
@@ -127,6 +197,9 @@ class ConnectionController extends Notifier<ConnectionView> {
 
   void _open(Session session) {
     _socket?.dispose();
+    if (_subject != null && _subject != session.user.id) {
+      _events.add(const MapEntry('session.revoked', null));
+    }
     _subject = session.user.id;
     state = const ConnectionView(
       ConnectionStatus.connecting,
@@ -155,6 +228,7 @@ class ConnectionController extends Notifier<ConnectionView> {
       if (!active()) return;
       try {
         final hello = ServerHello.parse(value, ref.read(protocolProvider));
+        _recoveringServer = false;
         state = ConnectionView(
           ConnectionStatus.connected,
           'Connected. Your guest session is ready.',
@@ -168,8 +242,44 @@ class ConnectionController extends Notifier<ConnectionView> {
         );
       }
     });
-    socket.onConnectError((_) {
+    for (final entry in {
+      'game.snapshot': 'gameSnapshot',
+      'game.delta': 'gameDelta',
+      'game.version': 'gameVersion',
+      'session.membership': 'membership',
+      'room.snapshot': 'roomSnapshot',
+      'presence.update': 'presence',
+      'session.error': 'error',
+    }.entries) {
+      socket.on(entry.key, (value) {
+        if (active() &&
+            ref.read(protocolProvider).accepts(entry.value, value)) {
+          _events.add(MapEntry(entry.key, value));
+        }
+      });
+    }
+    socket.on('server.restarting', (value) {
+      if (!active() ||
+          !ref.read(protocolProvider).accepts('restarting', value)) {
+        return;
+      }
+      _recoveringServer = true;
+      _restartTimer?.cancel();
+      _restartTimer = Timer(
+        Duration(milliseconds: (value as Map)['retryAfterMs'] as int),
+        () {
+          if (!_disposed) unawaited(connect());
+        },
+      );
+    });
+    socket.onConnectError((error) {
       if (active()) {
+        if (_recoveringServer) {
+          _restartTimer?.cancel();
+          _restartTimer = Timer(const Duration(seconds: 5), () {
+            if (!_disposed) unawaited(connect());
+          });
+        }
         state = const ConnectionView(
           ConnectionStatus.failed,
           'Could not connect. Check that the local server is running.',
@@ -216,6 +326,8 @@ class ConnectionController extends Notifier<ConnectionView> {
       await _refresh();
     } else if (_socket?.connected != true || session.user.id != _subject) {
       _open(session);
+    } else {
+      _events.add(const MapEntry('session.foreground', null));
     }
   }
 }

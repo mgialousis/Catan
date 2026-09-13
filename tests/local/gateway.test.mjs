@@ -2,6 +2,7 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { Client } from 'pg';
 import { io } from 'socket.io-client';
 import { createApp } from '../../apps/server/dist/app.js';
 import { loadConfig } from '../../apps/server/dist/config.js';
@@ -34,7 +35,16 @@ before(async () => {
   await app.listen(0, '127.0.0.1'); base = await app.getUrl();
   guest = await signIn();
 });
-after(async () => { for (const client of sockets) client.disconnect(); await app?.close(); });
+after(async () => {
+  for (const client of sockets) client.disconnect(); await app?.close();
+  // Valid denied gameplay now creates a durable receipt, even without a room.
+  if (guest) {
+    assert.ok(['127.0.0.1','localhost'].includes(new URL(local.adminDatabaseUrl).hostname));
+    const admin=new Client({connectionString:local.adminDatabaseUrl});await admin.connect();
+    try { await admin.query('DELETE FROM app.command_receipts WHERE actor_key=$1',[`user:${guest.user.id}`]); }
+    finally { await admin.end(); }
+  }
+});
 
 test('local anonymous guest connects, receives validated hello and sanitized health', async () => {
   assert.equal(guest.user.is_anonymous, true);
@@ -57,14 +67,14 @@ test('unexpected browser origin rejected, native without Origin accepted', async
   assert.equal(rejected.connected, false);
   const native = socket(auth(), null); const hello = once(native, 'server.hello'); native.connect(); await hello;
 });
-test('malformed commands rejected; valid future commands cannot mutate state', async () => {
+test('malformed commands rejected; valid unauthorized commands cannot mutate state', async () => {
   const client = socket(auth()); const hello = once(client, 'server.hello'); client.connect(); await hello;
   const error = once(client, 'session.error');
   client.emit('game.command', { type: 'ROLL_DICE', dice: [6, 6] });
   assert.equal((await error).code, 'INVALID_PAYLOAD');
-  const command = { protocolVersion: 1, commandId: randomUUID(), roomId: null, expectedVersion: null, expectedPhaseId: null, type: 'CREATE_ROOM', payload: { nickname: 'Tester', settings: { maxPlayers: 4, turnLimitSeconds: null, boardMode: 'STANDARD_RANDOM', rulesVersion: 'base-2020-v1' } } };
-  const ack = await client.timeout(3000).emitWithAck('room.command', command);
-  assert.equal(isValid('ack', ack), true); assert.equal(ack.status, 'REJECTED'); assert.equal(ack.error.code, 'NOT_IMPLEMENTED');
+  const command = { protocolVersion: 1, commandId: randomUUID(), roomId: randomUUID(), expectedVersion: 0, expectedPhaseId: randomUUID(), type: 'ROLL_DICE', payload: {} };
+  const ack = await client.timeout(3000).emitWithAck('game.command', command);
+  assert.equal(isValid('ack', ack), true); assert.equal(ack.status, 'REJECTED'); assert.equal(ack.error.code, 'FORBIDDEN');
 });
 test('guests cannot subscribe to arbitrary room IDs or read private tables through the Data API', async () => {
   const client = socket(auth()); const hello = once(client, 'server.hello'); client.connect(); await hello;

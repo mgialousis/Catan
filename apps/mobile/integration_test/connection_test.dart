@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -14,7 +15,11 @@ void main() {
   ) async {
     await app.main();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Connect as guest'));
+    if (Supabase.instance.client.auth.currentSession == null) {
+      expect(find.text('Connect as guest'), findsOneWidget);
+      await tester.enterText(find.byType(TextFormField).first, 'Native guest');
+      await tester.tap(find.text('Connect as guest'));
+    }
     Future<void> waitConnected() async {
       for (var attempt = 0; attempt < 60; attempt++) {
         await tester.pump(const Duration(milliseconds: 500));

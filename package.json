@@ -12,15 +12,21 @@
   "scripts": {
     "build": "npm run build -w @island/protocol && npm run build -w @island/game-engine && npm run build -w @island/server",
     "typecheck": "npm run build",
-    "test": "npm run build && node --test packages/protocol/test/*.test.mjs packages/game-engine/test/*.test.mjs apps/server/test/*.test.mjs",
-    "test:local": "npm run build && node --test --test-concurrency=1 tests/local/*.test.mjs",
+    "test": "npm run build && node --test packages/protocol/test/*.test.mjs packages/game-engine/test/*.test.mjs apps/server/test/*.test.mjs scripts/preview/table.test.mjs",
+    "test:local": "npm run build && node scripts/check-local-tests.mjs",
     "dev:server": "npm run build && node --env-file=.env apps/server/dist/main.js",
     "protocol:sync": "node scripts/sync-protocol.mjs",
     "local:start": "node scripts/start-local.mjs",
     "local:stop": "supabase stop",
     "local:configure": "node scripts/configure-local.mjs",
     "local:migrate": "supabase migration up --local",
-    "test:web": "node scripts/check-web.mjs"
+    "test:web": "node scripts/check-web.mjs",
+    "local:retention": "node scripts/retention.mjs",
+    "preview:engine": "npm run build && node scripts/preview/server.mjs",
+    "fixtures:ui": "npm run build && node scripts/preview/fixtures.mjs",
+    "test:web:game": "node scripts/check-game-web.mjs",
+    "test:web:timers": "node scripts/check-game-web.mjs --timed",
+    "fixtures:game": "npm run build && node scripts/game-wire-fixtures.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
