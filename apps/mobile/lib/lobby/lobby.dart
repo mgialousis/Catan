@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +23,31 @@ Uri invitationUri(String code, {String webUrl = '', Uri? browserUri}) {
           host: 'join',
           queryParameters: {'invite': code},
         );
+}
+
+/// Copy [value], reporting what actually happened.
+///
+/// Flutter web can resolve `Clipboard.setData` while the browser refuses the
+/// write or the hidden-textarea fallback silently no-ops, so a resolved future
+/// is not evidence that anything was copied. Read the value back to tell the
+/// difference. Reading can itself be refused, so an unreadable clipboard is
+/// reported as unknown rather than as failure.
+///
+/// Returns true when the value is confirmed on the clipboard, false when the
+/// clipboard holds something else, and null when it cannot be verified.
+Future<bool?> copyToClipboard(String value) async {
+  try {
+    await Clipboard.setData(ClipboardData(text: value));
+  } catch (_) {
+    return false;
+  }
+  try {
+    final read = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = read?.text;
+    return text == null ? null : text == value;
+  } catch (_) {
+    return null;
+  }
 }
 
 String? invitationFromUri(Uri uri) {

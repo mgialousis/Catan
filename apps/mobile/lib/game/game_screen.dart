@@ -980,6 +980,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
                     _ResourceCounter(
                       label: words(resource),
                       value: chosen[resource]!,
+                      hint: available == null
+                          ? null
+                          : 'you hold ${available[resource]}',
                       onChanged: (delta) => setSheetState(
                         () => chosen[resource] = chosen[resource]! + delta,
                       ),
@@ -1082,7 +1085,12 @@ class _TradeSheetState extends State<_TradeSheet> {
                 _ResourceCounter(
                   label: words(resource),
                   value: give[resource]!,
-                  canAdd: give[resource]! < s.stock[resource]!,
+                  hint: receive[resource]! > 0
+                      ? 'asked for below'
+                      : 'you hold ${s.stock[resource]}',
+                  canAdd:
+                      give[resource]! < s.stock[resource]! &&
+                      receive[resource]! == 0,
                   onChanged: (delta) =>
                       setState(() => give[resource] = give[resource]! + delta),
                 ),
@@ -1095,7 +1103,8 @@ class _TradeSheetState extends State<_TradeSheet> {
                 _ResourceCounter(
                   label: words(resource),
                   value: receive[resource]!,
-                  canAdd: receive[resource]! < 19,
+                  hint: give[resource]! > 0 ? 'offered above' : null,
+                  canAdd: receive[resource]! < 19 && give[resource]! == 0,
                   onChanged: (delta) => setState(
                     () => receive[resource] = receive[resource]! + delta,
                   ),
@@ -1265,22 +1274,43 @@ class _ResourceCounter extends StatelessWidget {
     required this.value,
     required this.onChanged,
     required this.canAdd,
+    this.hint,
   });
   final String label;
   final int value;
   final ValueChanged<int> onChanged;
   final bool canAdd;
+
+  /// Shown beside the label, e.g. how many of this resource the player holds.
+  final String? hint;
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Expanded(child: Text(label)),
+      Expanded(
+        child: Text.rich(
+          TextSpan(
+            text: label,
+            children: hint == null
+                ? null
+                : [
+                    TextSpan(
+                      text: '  $hint',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                    ),
+                  ],
+          ),
+        ),
+      ),
       IconButton(
         tooltip: 'One fewer $label',
         onPressed: value > 0 ? () => onChanged(-1) : null,
         icon: const Icon(Icons.remove_circle_outline),
       ),
       Semantics(
-        label: '$label $value',
+        label: hint == null ? '$label $value' : '$label $value, $hint',
         child: ExcludeSemantics(child: Text('$value')),
       ),
       IconButton(

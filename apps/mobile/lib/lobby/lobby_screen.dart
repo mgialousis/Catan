@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/connection.dart';
@@ -394,22 +393,38 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
                     ).textTheme.headlineSmall?.copyWith(letterSpacing: 3),
                   ),
                   const SizedBox(height: 12),
+                  // Always visible so sharing never depends on the clipboard:
+                  // a browser can refuse the write, or silently no-op it.
+                  SelectableText(
+                    invitationUri(
+                      lobby.invitation!,
+                      webUrl: ref.read(configProvider).webUrl,
+                      browserUri: kIsWeb ? Uri.base : null,
+                    ).toString(),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: () async {
-                      final code = lobby.invitation!;
                       final link = invitationUri(
-                        code,
+                        lobby.invitation!,
                         webUrl: ref.read(configProvider).webUrl,
                         browserUri: kIsWeb ? Uri.base : null,
                       ).toString();
-                      await Clipboard.setData(ClipboardData(text: link));
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Invitation link copied'),
-                          ),
-                        );
-                      }
+                      final copied = await copyToClipboard(link);
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(switch (copied) {
+                            true => 'Invitation link copied',
+                            false =>
+                              'Could not reach the clipboard. Select the link above and copy it.',
+                            null =>
+                              'Copied. If nothing pastes, select the link above.',
+                          }),
+                        ),
+                      );
                     },
                     icon: const Icon(Icons.copy),
                     label: const Text('Copy invitation link'),

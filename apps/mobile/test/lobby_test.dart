@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:island_table/core/protocol.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:island_table/core/connection.dart';
@@ -39,6 +40,58 @@ class ReplyConnection extends ConnectionController {
 }
 
 void main() {
+  // The reported bug: Flutter web resolved setData while nothing reached the
+  // clipboard, so the UI claimed success. Verify by reading back, and keep an
+  // unreadable clipboard distinct from a failed write.
+  group('copyToClipboard', () {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+    void mock(Future<Object?>? Function(MethodCall call)? handler) =>
+        messenger.setMockMethodCallHandler(SystemChannels.platform, handler);
+    tearDown(() => mock(null));
+
+    test('confirms a write the clipboard actually accepted', () async {
+      String? stored;
+      mock((call) async {
+        if (call.method == 'Clipboard.setData') {
+          stored = (call.arguments as Map)['text'] as String;
+          return null;
+        }
+        if (call.method == 'Clipboard.getData') return {'text': stored};
+        return null;
+      });
+      expect(await copyToClipboard('https://example.test/?invite=ABC'), isTrue);
+    });
+
+    test('reports failure when the write silently did not take', () async {
+      mock((call) async {
+        if (call.method == 'Clipboard.setData') return null;   // resolves, writes nothing
+        if (call.method == 'Clipboard.getData') return {'text': 'something else'};
+        return null;
+      });
+      expect(await copyToClipboard('https://example.test/?invite=ABC'), isFalse);
+    });
+
+    test('reports unknown when the clipboard cannot be read back', () async {
+      mock((call) async {
+        if (call.method == 'Clipboard.setData') return null;
+        if (call.method == 'Clipboard.getData') throw PlatformException(code: 'denied');
+        return null;
+      });
+      expect(await copyToClipboard('https://example.test/?invite=ABC'), isNull);
+    });
+
+    test('reports failure when the write itself is refused', () async {
+      mock((call) async {
+        if (call.method == 'Clipboard.setData') throw PlatformException(code: 'denied');
+        return null;
+      });
+      expect(await copyToClipboard('https://example.test/?invite=ABC'), isFalse);
+    });
+  });
+
   test(
     'native invitations and rematches can open the free web client on an iPhone',
     () {
