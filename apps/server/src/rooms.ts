@@ -46,6 +46,9 @@ export class Rooms {
     this.sockets.clear();
     this.subscriptions.clear();
   }
+  assertOwnership(epoch: unknown): void {
+    if (epoch !== this.epoch) { this.retire(); throw new LobbyError('SERVICE_UNAVAILABLE'); }
+  }
   private schedule(delay = 0): void {
     clearTimeout(this.timer);
     if (this.stopped || !this.subscriptions.size) return;
@@ -246,6 +249,8 @@ export class Rooms {
       const players = await this.players(db, room.id), own = players.find(p => p.auth_user_id === userId);
       if (!own) throw new LobbyError('FORBIDDEN');
       if (!socket.connected) return;
+      // Advisory activity only. Authenticated live sockets remain the authority for presence.
+      await db.query("UPDATE app.players SET last_seen_at=clock_timestamp() WHERE id=$1 AND (last_seen_at IS NULL OR last_seen_at < clock_timestamp()-interval '1 minute')", [own.id]);
       const previous = this.subscriptions.get(socket.id);
       const newMembership = previous?.roomId !== room.id || previous?.playerId !== own.id;
       this.subscriptions.set(socket.id, { socket, roomId: room.id, playerId: own.id, userId });

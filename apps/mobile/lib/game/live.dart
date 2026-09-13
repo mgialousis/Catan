@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/connection.dart';
 import '../core/protocol.dart';
@@ -308,10 +309,10 @@ class _LiveGameShellState extends ConsumerState<LiveGameShell> {
                     lobby.room?['roomId'] == widget.roomId) {
                   throw StateError('Rematch unavailable');
                 }
-                return Uri(
-                  scheme: 'islandtable',
-                  host: 'join',
-                  queryParameters: {'invite': lobby.invitation},
+                return invitationUri(
+                  lobby.invitation!,
+                  webUrl: ref.read(configProvider).webUrl,
+                  browserUri: kIsWeb ? Uri.base : null,
                 );
               }
             : null,

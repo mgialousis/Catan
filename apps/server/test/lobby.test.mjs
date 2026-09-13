@@ -35,3 +35,13 @@ test('forwarding headers require explicit trusted hops; forged left-hand values 
   assert.equal(clientAddress('10.0.0.1', 'forged, 203.0.113.8', 1), '203.0.113.8');
   assert.equal(clientAddress('10.0.0.1', 'invalid', 1), '10.0.0.1');
 });
+
+import { Rooms } from '../dist/rooms.js';
+test('per-room ownership loss retires the runtime and disconnects subscribers', () => {
+  const rooms = new Rooms(null);let stopped=0,disconnected=0;
+  rooms.games={stop(){stopped++;}};rooms.attach({id:'test',emit(){},disconnect(){disconnected++;}});
+  rooms.assertOwnership(rooms.epoch);
+  assert.throws(()=>rooms.assertOwnership('different-epoch'),e=>e.code==='SERVICE_UNAVAILABLE');
+  assert.equal(stopped,1);assert.equal(disconnected,1);
+  assert.throws(()=>rooms.assertOwnership('different-epoch'));assert.equal(stopped,1);
+});

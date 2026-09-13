@@ -40,6 +40,27 @@ class ReplyConnection extends ConnectionController {
 
 void main() {
   test(
+    'native invitations and rematches can open the free web client on an iPhone',
+    () {
+      const code = 'ABCDEFGHJK';
+      final uri = invitationUri(code, webUrl: 'https://island.example.invalid');
+      expect(
+        uri.toString(),
+        'https://island.example.invalid?invite=ABCDEFGHJK',
+      );
+      expect(invitationFromUri(uri), code);
+      expect(invitationUri(code).scheme, 'islandtable');
+      expect(
+        invitationUri(
+          code,
+          browserUri: Uri.parse('http://127.0.0.1:8080/#/old'),
+        ).fragment,
+        '',
+      );
+    },
+  );
+
+  test(
     'mismatched acknowledgement unlocks retry while preserving the saved intent',
     () async {
       final connection = ReplyConnection(), store = MemoryStore();

@@ -1,0 +1,17 @@
+**
+!scripts/
+!scripts/*.mjs
+!scripts/*.sh
+!packages/
+!packages/protocol/
+!packages/protocol/schemas/
+!packages/protocol/schemas/**
+!packages/protocol/events.json
+!apps/
+!apps/mobile/
+!apps/mobile/lib/
+!apps/mobile/lib/**
+!apps/mobile/web/
+!apps/mobile/web/**
+!apps/mobile/pubspec.yaml
+!apps/mobile/pubspec.lock

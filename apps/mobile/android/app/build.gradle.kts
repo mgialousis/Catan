@@ -1,9 +1,16 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val islandSigningFile = rootProject.file("key.properties")
+val islandSigning = Properties()
+if (islandSigningFile.exists()) FileInputStream(islandSigningFile).use { islandSigning.load(it) }
 
 android {
     namespace = "dev.islandtable.island_table"
@@ -29,13 +36,28 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (islandSigningFile.exists()) create("release") {
+            keyAlias = islandSigning.getProperty("keyAlias")
+            keyPassword = islandSigning.getProperty("keyPassword")
+            storeFile = file(islandSigning.getProperty("storeFile"))
+            storePassword = islandSigning.getProperty("storePassword")
+        }
+    }
     buildTypes {
         release {
-            // Supply a dedicated release signing configuration before distribution.
+            if (islandSigningFile.exists()) signingConfig = signingConfigs.getByName("release")
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+// Release distribution must never silently fall back to a debug key or unsigned APK.
+gradle.taskGraph.whenReady {
+    if (!islandSigningFile.exists() && allTasks.any { it.name.contains("Release") }) {
+        throw GradleException("Release signing requires ignored android/key.properties; see docs/deployment.md")
+    }
 }

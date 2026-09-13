@@ -397,18 +397,11 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
                   OutlinedButton.icon(
                     onPressed: () async {
                       final code = lobby.invitation!;
-                      final link = kIsWeb
-                          ? Uri.base
-                                .replace(
-                                  queryParameters: {'invite': code},
-                                  fragment: '',
-                                )
-                                .toString()
-                          : Uri(
-                              scheme: 'islandtable',
-                              host: 'join',
-                              queryParameters: {'invite': code},
-                            ).toString();
+                      final link = invitationUri(
+                        code,
+                        webUrl: ref.read(configProvider).webUrl,
+                        browserUri: kIsWeb ? Uri.base : null,
+                      ).toString();
                       await Clipboard.setData(ClipboardData(text: link));
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(

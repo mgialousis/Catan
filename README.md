@@ -175,3 +175,9 @@ flutter run -t lib/preview.dart -d chrome --web-port=8081
 The practice entry point has nine scenarios and automated opponents using the real pure engine. It is excluded from `main.dart`; its rematch link is only a practice reset. Use `--dart-define=PRACTICE_URL=http://10.0.2.2:3001` on Android. Native practice interaction tests are in `integration_test/game_flow_test.dart`.
 
 See [Phase 4 verification](docs/phase-4-verification.md) [Phase 5 verification](docs/phase-5-verification.md), and [Phase 6 verification](docs/phase-6-verification.md) for evidence and platform limits. No hosted infrastructure, paid services or store publication are configured by this phase.
+
+## Phase 7 deployment preparation
+
+Claude's Round 5 observations are addressed. Linux API/Web packaging, public configuration validation, operator retention and Android release signing are prepared. Native hosts can share the configured `WEB_URL` with friends using mobile browsers. See [deployment instructions](docs/deployment.md) and [Phase 7 progress](docs/phase-7-verification.md).
+
+**Phase 7 is not complete:** no hosted service is live; account access, iOS provisioning and real-device/network acceptance are still needed. Builds made with `config/release.example.json` or default Docker Web arguments have placeholder URLs and are packaging checks only. Keep `.local/signing` and `android/key.properties` backed up privately; they are excluded from Git.

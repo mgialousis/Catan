@@ -104,7 +104,7 @@ export class Games {
             if (room.status === 'FINISHED' || room.status === 'ABANDONED') throw new RuleError('GAME_FINISHED');
             if (!['ACTIVE', 'PAUSED'].includes(room.status)) throw new RuleError('GAME_NOT_AVAILABLE');
             const previous = this.state(row), now = await this.now(db), context = { ...engineContext(), now };
-            if (room.runtime_epoch !== this.rooms.epoch) throw new Error('Room ownership mismatch');
+            this.rooms.assertOwnership(room.runtime_epoch);
             if (cmd.expectedVersion !== previous.version) throw new RuleError('STALE_VERSION');
             if (cmd.expectedPhaseId !== previous.publicState.phaseId) throw new RuleError('WRONG_PHASE');
             const sessionCommand = ['PAUSE_GAME', 'RESUME_GAME', 'ABANDON_GAME'].includes(cmd.type);
@@ -264,7 +264,8 @@ export class Games {
       const receipt = (await db.query("SELECT 1 FROM app.command_receipts WHERE actor_key='system:timer' AND command_id=$1", [job.commandId])).rowCount;
       if (receipt) return 'STALE' as const;
       const room = (await db.query('SELECT * FROM app.rooms WHERE id=$1 FOR UPDATE',[job.roomId])).rows[0];
-      if (!room || room.status !== 'ACTIVE' || room.runtime_epoch !== this.rooms.epoch) return 'STALE' as const;
+      if (!room || room.status !== 'ACTIVE') return 'STALE' as const;
+      this.rooms.assertOwnership(room.runtime_epoch);
       const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE',[job.roomId])).rows[0];
       const state = this.state(row), now = await this.now(db);
       if (!matchesJob(state,job)) return 'STALE' as const;
@@ -322,7 +323,7 @@ export class Games {
         await this.rooms.fence(db);
         const rooms = (await db.query("SELECT * FROM app.rooms WHERE status IN ('ACTIVE','PAUSED') ORDER BY id FOR UPDATE")).rows;
         for (const room of rooms) {
-          if (room.runtime_epoch !== this.rooms.epoch) throw new Error('Room ownership mismatch');
+          this.rooms.assertOwnership(room.runtime_epoch);
           const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE',[room.id])).rows[0];
           if (!row) throw new RepairRequired('Missing saved game; repair required');
           let state = this.state(row); const now = await this.now(db);

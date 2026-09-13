@@ -7,10 +7,148 @@
 | 1 | Phase 1 commit + uncommitted Phase 2 lobby | 14 findings |
 | 2 | Re-review after fixes | All 14 fixed or correctly deferred; 5 new observations (R1–R5) |
 | 3 | Phase 3 rules engine | R1–R3 fixed, R4–R5 open by choice; 5 new observations (P1–P5). No rule defects found. |
-| 4 | **Phase 5 durable gameplay (current)** | **P1 fixed beyond the suggestion; 8 new findings (R4-1…R4-8), one of them a reachable user-facing defect.** |
+| 4 | Phase 5 durable gameplay | P1 fixed beyond the suggestion; 8 new findings (R4-1…R4-8), one a reachable user-facing defect. |
+| 5 | **Phase 6 timers, pause and recovery (current)** | **All 8 round-4 findings fixed, several with stronger mechanisms than proposed. No defect found in the clock logic; 4 minor observations (R5-1…R5-4).** |
 
 Round 1 and 2 detail is condensed to finding plus resolution. Headings and numbering are preserved
 because `docs/phase-2-verification.md` cites them.
+
+---
+
+# Round 5 — Phase 6 timers, pause and recovery
+
+## Re-verification
+
+| Check | R3 | R4 | R5 |
+| --- | --- | --- | --- |
+| `npm run build` | clean | clean | clean |
+| `npm test` | 188 | 191 | **216** |
+| `npm run test:local` | 23 | 37 | **56** |
+| `flutter analyze` | clean | 2 infos | **clean** |
+| `flutter test` | 132 | 235 | **260** |
+| Database residue from one local run | zero | +1 receipt | **zero, and now enforced automatically** |
+
+## Disposition of round-4 findings
+
+All eight are fixed. Four were fixed with a stronger mechanism than I proposed, which is worth
+recording because the stronger version is what stops the problem recurring:
+
+| # | Finding | Resolution |
+| --- | --- | --- |
+| R4-1 | `TIMED_MODE_UNAVAILABLE` missing from the error enum | Fixed. I re-checked **systematically**, not just for that code: every code `errors.ts` can emit is now present in the schema enum, with no gaps |
+| R4-2 | Gameplay browser smoke was orphaned | Fixed — `npm run test:web:game` and `test:web:timers`, both documented in the README |
+| R4-3 | Stale plan status line, no Phase 5 evidence doc | Fixed — status line current, and `docs/phase-4/5/6-verification.md` all exist |
+| R4-4 | Stale README lines | Fixed — "no rules implementation yet" gone, "Phases 1–6", evidence links complete through Phase 6 |
+| R4-5 | `flutter analyze` not clean | Fixed |
+| R4-6 | One receipt leaked per local run | **Stronger than asked.** `scripts/check-local-tests.mjs` snapshots all six application tables before and after the suite and **fails the run** on any drift. It prints "Local fixture cleanup verified" — a leak can no longer pass unnoticed |
+| R4-7 | Shared payload built from player zero's projection | **Stronger than asked.** `commonView()` strips the private half from *every* recipient view and throws `Recipient-dependent public projection` unless they are deep-equal. My latent-coupling note is now an enforced runtime invariant |
+| R4-8 | Test seams on the production service object | **Stronger than asked.** `faults` is now a private `#faults` field injected through the constructor, defaulting to `Object.freeze({})` — no longer publicly mutable |
+
+## Assessment
+
+Timers are the most race-prone area in the whole plan, and I went looking for defects rather than
+confirmation. **I did not find one.** Checking the implementation against PLAN §3.4–§3.6 line by line:
+
+- **Budget lifecycle.** Setup is untimed (`turnNumber === 0` yields no deadline); a fresh budget and
+  generation are minted when the turn number changes. Ordinary `ACTION` moves leave the deadline
+  untouched, so building does not restart the clock.
+- **The discard barrier is correct, including the subtle part.** Entering `DISCARD_REQUIRED` captures
+  the active player's remaining budget, nulls the turn deadline and opens one concurrent 30-second
+  deadline per obligated player; leaving it restores the captured budget. Critically, §3.4.6 says an
+  individual discard expiry must resolve *only* that discard — and the discarder branch of
+  `fallback()` never sets `turnExpired` or touches `remainingTurnMs`, while the turn branch does.
+  That is the rule most likely to be got wrong, and it is right.
+- **The fallback table matches §3.4 exactly**: `AWAIT_ROLL`→roll, `ACTION`→end turn,
+  `ROAD_BUILDING`→finish free roads, `ROBBER_MOVE`/`ROBBER_VICTIM`→uniform legal choice, discard→
+  uniform sample **without replacement** from the real hand (the loop decrements the working hand).
+- **Early wake stores nothing.** `runTimer` returns `EARLY` *before* the receipt insert, so the stable
+  system ID can still execute when the deadline actually arrives — §3.4.5 implemented precisely, and
+  `tests/local/timers.test.mjs` covers it explicitly ("early job leaves no receipt").
+- **Authority comes from persisted state, not the caller.** `matchesJob` re-checks room, phase,
+  generation, deadline and player under `FOR UPDATE` on both the room and game rows, with an epoch
+  check, before anything mutates.
+- **Continuations are bounded** — twelve steps then an explicit throw, with the worst case (pre-roll
+  Knight through robber, victim, roll and end turn) named in a comment.
+- **`turnExpired` finally has a producer**, closing round-3 P2. So does `runtime_heartbeat_at`,
+  closing the second half of round-1 finding 12; it is written at most every 15 seconds under an
+  epoch guard, and `recover()` freezes clocks at a checkpoint bounded by `updated_at` and that
+  heartbeat, exactly as §3.6 describes.
+- **Corrupt state is never replaced.** `RepairRequired` sets a latch, notifies subscribers and stops
+  the scheduler rather than regenerating a board — §3.6's repair-required condition, with a test.
+- **The client countdown cannot be gamed by the phone clock.** `EstimatedServerClock` runs off a
+  monotonic `Stopwatch`, never accepts a *backwards* server estimate, and repaints locally every
+  250 ms with no per-second network or database traffic (§3.4.4). At zero it says "Time is up ·
+  waiting for the server", which keeps the server authoritative in the wording as well as the code.
+- **Polling is proportional.** The scheduler ticks at 250 ms only while a clock is actually running,
+  15 s otherwise, and skips the deadline query entirely when no clocks run — consistent with the
+  round-2 R4 discipline about idle cost on the free tier.
+
+The 56 local tests read like the §4.4 recovery matrix rather than a sample of it: early job, late
+player action losing to a due deadline, concurrent duplicate timeouts committing once, pre-roll Knight
+replay through mandatory actions, a due deadline beating a disconnect, independent discard jobs
+conserving all cards, terminated database connection recovering identical hands, fenced restart
+requiring explicit host resume, graceful shutdown freezing exact remaining time, and corrupt state
+failing readiness without regenerating inventory.
+
+Two other open items from my earlier rounds are also closed: the modal surfaces I flagged as untested
+in `docs/phase-4-progress-claude.md` now have a matrix over modal × size × text scale in
+`test/game_flow_test.dart`, and `docs/phase-4-verification.md` supersedes my progress record while
+explicitly preserving its authorship — the right way to handle that.
+
+## New observations
+
+Thin this round, which is the honest result rather than a courtesy. None of these is a defect.
+
+### R5-1. P4.10's acceptance criterion was rewritten before it was ticked
+
+The approved text read "Validate layout and gestures on narrow iPhones, **Android phones**, landscape
+and enlarged text settings." It now reads "Validate **available** narrow-phone layouts and gestures:
+… three interactive tests on Android and iPhone **simulators** … Physical phones and Safari remain
+explicitly unverified; simulator evidence does not substitute for the Phase 7 real-device acceptance
+gate."
+
+The new text is honest — it names the gap and defers it to a real gate. But it narrows a criterion the
+user approved, and then ticks it, so a reader scanning checkboxes sees Phase 4 fully green and only
+learns otherwise from the trailing sentence. My suggestion is not to reword it back, but to leave the
+box unticked until the Phase 7 device gate actually passes, or mark it `[x] (scoped)`. Rewriting an
+approved acceptance criterion is the user's call, not the implementer's.
+
+### R5-2. The `TIMED_MODE_UNAVAILABLE` message is now false
+
+Timed mode works, and nothing throws the code any more — correctly, and the Phase 6 doc explains the
+enum entry is retained for backward compatibility. But `errors.ts` still maps it to *"Time limits are
+not available yet. Choose no time limit to start."* If any future path emits it, players are told
+something untrue. Drop the message (keeping the enum entry) or reword it to a neutral rejection.
+
+### R5-3. `last_seen_at` is still never written
+
+The last dead column from round-1 finding 12. `runtime_heartbeat_at` got its producer this phase;
+this one did not, and presence remains entirely in memory. That is a defensible design (Phase 2
+documented it as "not trusted presence"), but the schema still advertises a field nothing maintains.
+Either write it or drop it when a migration is next needed.
+
+### R5-4. `Room ownership mismatch` retries forever instead of retiring
+
+`tick()` throws on a per-room epoch mismatch, which lands in the generic handler and reschedules after
+1 s — indefinitely. A *global* epoch loss is handled properly (the fence raises `SERVICE_UNAVAILABLE`
+and the process retires), so this branch is defensive and should not fire in practice. Still, a
+per-room mismatch means this process no longer owns the room, and the honest response is the same
+retire path rather than a one-second error loop.
+
+## What is left
+
+Phase 6 ends where the plan says it should, and the Phase 6 document says "Stop after Phase 6 and
+review before Phase 7." The remaining risk is concentrated entirely in deployment, and none of it has
+been reduced by local work:
+
+1. **Render ingress**: the real hop count behind `TRUSTED_PROXY_HOPS`, TLS/JWKS in hosted
+   infrastructure, and process-replacement routing during a deploy.
+2. **The Linux Flutter build** in `scripts/build-web.sh`, still never executed.
+3. **The hosted retention entry point** — `retention.mjs` remains deliberately local-only (round-2 R2).
+4. **Real devices**: physical phones, Safari/WebKit, signed builds, background suspension, and a
+   complete human timed match across mobile networks (R5-1).
+5. **Single-process design**: the epoch fence assumes one writer. Horizontal scaling requires
+   revisiting ownership, as both the plan and the Phase 6 document state.
 
 ---
 

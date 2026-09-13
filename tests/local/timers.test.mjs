@@ -127,6 +127,7 @@ test('persisted timers and recovery with four authenticated phones', { timeout: 
         const payload=settlement?{vertexId:Object.keys(p.board.vertices).find(v=>canSettle(p,actor.playerId,v,true))}:{edgeId:p.board.vertices[state.serverState.setup.pendingVertexId].edgeIds.find(e=>canRoad(p,actor.playerId,e))};
         assert.equal((await send(actor,command(state,settlement?'PLACE_SETUP_SETTLEMENT':'PLACE_SETUP_ROAD',payload))).status,'ACCEPTED');await converge();
       }
+      assert.equal((await admin.query('SELECT count(*)::int n FROM app.players WHERE room_id=$1 AND last_seen_at IS NOT NULL',[roomId])).rows[0].n,4);
       assert.equal(state.clockState.remainingTurnMs,60000);assert.equal(timerJobs(state).length,1);initial=structuredClone(state);
     });
     await t.test('early job leaves no receipt; pause/resume invalidates its generation without refilling',async()=>{

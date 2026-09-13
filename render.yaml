@@ -1,4 +1,4 @@
-# Future deployment definitions only. Phase 1 uses local services.
+# Phase 7: free services only; deploy manually between games.
 services:
   - type: web
     name: island-table-api
@@ -22,6 +22,9 @@ services:
         sync: false
       - key: WEB_ORIGINS
         sync: false
+      # Leave unset/zero until actual ingress forwarding is measured.
+      - key: TRUSTED_PROXY_HOPS
+        value: "0"
   - type: web
     name: island-table-web
     runtime: static

@@ -10,7 +10,7 @@ export function safeError(code: string, requestId?: unknown): SafeError {
     ROOM_FULL: 'All four seats are taken.', NAME_TAKEN: 'Someone at this table already uses that nickname.',
     COLOUR_TAKEN: 'That colour is already taken.', STALE_VERSION: 'The table changed. Review it and try again.',
     GAME_ALREADY_STARTED: 'This lobby is no longer open.', PLAYERS_NOT_READY: 'Starting requires 3–4 connected, ready players.',
-    TIMED_MODE_UNAVAILABLE: 'Time limits are not available yet. Choose no time limit to start.',
+    TIMED_MODE_UNAVAILABLE: 'This time-limit setting is unavailable. Review the table settings and try again.',
     GAME_NOT_AVAILABLE: 'The game is not available at this table.',
     MEMBERSHIP_ENDED: 'You have left this table.', COMMAND_ID_REUSED: 'This request ID was already used for a different action.',
     RECEIPT_EXPIRED: 'This old request is no longer available. Refresh your table.', SERVICE_UNAVAILABLE: 'Please try again shortly.',

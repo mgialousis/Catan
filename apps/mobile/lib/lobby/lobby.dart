@@ -8,6 +8,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../core/connection.dart';
 
+Uri invitationUri(String code, {String webUrl = '', Uri? browserUri}) {
+  final configured = Uri.tryParse(webUrl);
+  final base =
+      browserUri ??
+      (configured?.scheme == 'https' && configured!.host.isNotEmpty
+          ? configured
+          : null);
+  return base != null
+      ? base.replace(queryParameters: {'invite': code}).removeFragment()
+      : Uri(
+          scheme: 'islandtable',
+          host: 'join',
+          queryParameters: {'invite': code},
+        );
+}
+
 String? invitationFromUri(Uri uri) {
   final fragment = Uri.tryParse(uri.fragment);
   final code =

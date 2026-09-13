@@ -1,0 +1,17 @@
+FROM node:22.20.0-bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git xz-utils unzip libglu1-mesa && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+RUN chown node:node /app
+USER node
+COPY --chown=node:node scripts/install-flutter-linux.sh scripts/install-flutter-linux.sh
+RUN bash scripts/install-flutter-linux.sh
+COPY --chown=node:node scripts scripts
+COPY --chown=node:node packages/protocol packages/protocol
+COPY --chown=node:node apps/mobile apps/mobile
+ARG WEB_URL=https://web.example.invalid
+ARG API_URL=https://api.example.invalid
+ARG SUPABASE_URL=https://project.example.invalid
+ARG SUPABASE_ANON_KEY=sb_publishable_local_build_verification
+RUN WEB_URL="$WEB_URL" API_URL="$API_URL" SUPABASE_URL="$SUPABASE_URL" SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" bash scripts/build-web.sh
+FROM scratch AS artifact
+COPY --from=build /app/apps/mobile/build/web/ /

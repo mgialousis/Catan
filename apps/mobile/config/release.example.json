@@ -1,0 +1,6 @@
+{
+  "WEB_URL": "https://web.example.invalid",
+  "API_URL": "https://api.example.invalid",
+  "SUPABASE_URL": "https://project.example.invalid",
+  "SUPABASE_ANON_KEY": "sb_publishable_replace_with_your_public_key"
+}

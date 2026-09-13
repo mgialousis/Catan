@@ -1,0 +1,15 @@
+import { randomBytes } from 'node:crypto';
+import { existsSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+const directory=resolve('.local/signing'),properties=resolve('apps/mobile/android/key.properties');
+const keystore=join(directory,'island-release.jks'),passwordFile=join(directory,'password');
+if(existsSync(properties)||existsSync(keystore))throw Error('Signing configuration already exists; preserve it for app updates');
+mkdirSync(directory,{recursive:true,mode:0o700});
+const password=randomBytes(32).toString('hex');writeFileSync(passwordFile,password,{mode:0o600,flag:'wx'});
+const bundled='/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool';
+const keytool=process.env.JAVA_HOME?join(process.env.JAVA_HOME,'bin/keytool'):existsSync(bundled)?bundled:'keytool';
+execFileSync(keytool,['-genkeypair','-keystore',keystore,'-storetype','JKS','-storepass:file',passwordFile,'-keypass:file',passwordFile,'-alias','island-release','-keyalg','RSA','-keysize','3072','-validity','10000','-dname','CN=Island Table, OU=Private distribution, O=Island Table, C=CH'],{stdio:'pipe'});
+chmodSync(keystore,0o600);
+writeFileSync(properties,`storeFile=${keystore}\nstorePassword=${password}\nkeyPassword=${password}\nkeyAlias=island-release\n`,{mode:0o600,flag:'wx'});
+console.log('Created ignored local release signing material. Back up .local/signing and android/key.properties securely before distribution.');

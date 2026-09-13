@@ -1,10 +1,10 @@
 # Private multiplayer board game — technical execution blueprint
 
-Status: **Phases 1–6 implemented and locally verified; Claude Round 4 findings addressed. Physical-phone/Safari and hosted acceptance remain Phase 7 work.**
+Status: **Phases 1–6 implemented with local evidence; physical-device acceptance remains open (P4.10). Phase 7 is in progress; hosted access and device acceptance are pending.**
 
 Prepared: 2026-09-08. Workspace: `/Users/miltos/Downloads/Catan`.
 
-This document specifies the agreed Flutter, NestJS/TypeScript, Supabase and Render implementation. The user authorized implementation through Phase 6 and requested review of Claude’s updated findings before continuing. Work uses one agent and local, free services. See [Phase 4 verification](docs/phase-4-verification.md), [Phase 5 verification](docs/phase-5-verification.md), [Phase 6 verification](docs/phase-6-verification.md), [protocol decisions](docs/protocol.md) and [local setup](README.md). Hosted deployment and Phase 7 await review.
+This document specifies the agreed Flutter, NestJS/TypeScript, Supabase and Render implementation. The user authorized implementation through Phase 7 and requested review of Claude’s updated findings before continuing. Work uses one agent and local, free services. See [Phase 4 verification](docs/phase-4-verification.md), [Phase 5 verification](docs/phase-5-verification.md), [Phase 6 verification](docs/phase-6-verification.md), [protocol decisions](docs/protocol.md) and [local setup](README.md). Phase 7 is underway; hosted account access and physical-device acceptance remain pending.
 
 ## Scope and operating assumptions
 
@@ -537,7 +537,7 @@ The board and game controls are implemented. Claude's UI contributions were revi
 - [x] P4.7 Add development-card purchase/play controls, private draw feedback and card-specific choices.
 - [x] P4.8 Add public action history, pending-action feedback, unavailable-action reasons and accessible player identification.
 - [x] P4.9 Add paused/reconnecting/result screens and a rematch invitation flow. The real host-only rematch command is connected in Phase 5.
-- [x] P4.10 Validate available narrow-phone layouts and gestures: automated portrait/landscape layouts at 1.0×/1.3×/2.0× text; 24 opened-modal cases; three interactive tests on Android and iPhone simulators, including pinch/pan. Physical phones and Safari remain explicitly unverified; simulator evidence does not substitute for the Phase 7 real-device acceptance gate.
+- [ ] P4.10 Validate available narrow-phone layouts and gestures: automated portrait/landscape layouts at 1.0×/1.3×/2.0× text; 24 opened-modal cases; three interactive tests on Android and iPhone simulators, including pinch/pan. Physical phones and Safari remain explicitly unverified; simulator evidence does not substitute for the Phase 7 real-device acceptance gate.
 
 Exit gate: every supported command has a reachable, comprehensible UI; hidden hands never appear in another player's view; duplicate taps remain a single pending intent. A sample screenshot is not a substitute for an interactive play-through.
 
@@ -590,6 +590,8 @@ Dependencies: prior exit gates; free hosting accounts and access to test devices
 - [ ] P7.8 Measure command latency, snapshot size, reconnect behavior, memory and bandwidth; correct failures within the target capacity.
 - [ ] P7.9 Document game-night startup, pause/resume, backup/restore, rollback, guest identity loss and quota exhaustion.
 - [ ] P7.10 Record tested versions, devices, links, known limitations and acceptance evidence; leave no paid resource enabled by default.
+
+Local preparation (partial; no hosted checkbox is claimed): Claude R5-1–R5-4 addressed; Linux API and pinned Flutter Web builds verified; restricted operator retention and a finite hosted preflight added; dedicated Android release signing configured; native/rematch invitations support the shared Web URL. See [Phase 7 evidence](docs/phase-7-verification.md). Account access, hosted permissions/TLS/ingress, real URLs, iOS provisioning, backup/restore rehearsal, full matches and soak measurements remain open.
 
 Exit gate: friends can open an invitation and complete the base game on separate phones, with privacy and recovery checks passing and measured usage within the selected free allowances.
 
@@ -907,4 +909,4 @@ The stack, private rooms, live base-game play, nickname entry and free initial c
 | Paused game capacity | A paused game retains the one active slot until resumed, completed or explicitly abandoned |
 | Terminal data | Keep completed records for 30 days, with explicit maintenance/export before cleanup |
 
-Next action: **review Phase 6 before authorizing Phase 7 (hosted deployment and device acceptance).** No hosted infrastructure has been deployed. See [Phase 6 verification](docs/phase-6-verification.md).
+Next action: **connect the chosen free Supabase project and Render workspace, then complete hosted and physical-device acceptance.** Phase 7 preparation is implemented; its exit gate remains open. See [Phase 7 verification](docs/phase-7-verification.md) and [deployment runbook](docs/deployment.md).
