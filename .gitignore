@@ -16,3 +16,10 @@ apps/mobile/assets/protocol/
 
 # Local IDE metadata
 .idea/
+
+# Agent tooling installed locally; not part of the build or the pinned toolchain
+.agents/
+skills-lock.json
+.mcp.json
+.claude/settings.local.json
+.claude/skills/

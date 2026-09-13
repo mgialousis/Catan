@@ -47,12 +47,101 @@ Local sizing only: the API container used **85.98 MiB** with one authenticated i
 
 The Linux Web build reports the existing optional Cupertino font warning and a Docker linter warning for the public `SUPABASE_ANON_KEY` argument. The public-config validator refuses privileged keys; no private key is compiled. No new dependency upgrade was performed.
 
+## Hosted Supabase provisioning — 2026-09-13 (Claude)
+
+Project `dybismsqbzubwzzfrnfo` (`https://dybismsqbzubwzzfrnfo.supabase.co`) was reachable through the
+Supabase MCP server, so P7.2's database half was carried out. **Divergence from the runbook:** the
+migration was applied through MCP `apply_migration` rather than `supabase db push`, because no CLI
+access token is configured. It was recorded under the same name as the checked-in file
+(`20260909000100_foundation`), so local and remote history stay aligned.
+
+Pre-state confirmed fresh before writing anything — no `app` schema, no `island_*` roles, empty
+migration history, `auth.users` empty. No export was required and no existing data was touched.
+
+| Check | Result |
+| --- | --- |
+| Tables / RLS / owner | 8 tables, 8 with RLS enabled, all owned by `island_owner`, 8 `runtime_access` policies |
+| Compatibility row | `version/protocol/rules` = `1 / 1 / base-2020-v1`, matching `Database.ready()` |
+| Runtime role flags | `island_runtime`: not superuser, no CREATEDB, no CREATEROLE, no BYPASSRLS |
+| Runtime DELETE | **None on any table** — move logs and receipts stay append-only |
+| Runtime column UPDATE | `outbox_events(attempts, published_at)` and `runtime_control(active_epoch, claimed_at)` only |
+| Client roles | `anon`, `authenticated`, `service_role`: no `app` schema USAGE and no table privileges |
+| Data API exposure | Live REST probe returns `PGRST106 — Only the following schemas are exposed: public, graphql_public`; `app` is not reachable |
+| Auth signing | JWKS serves one **ES256** key, so production asymmetric verification is available |
+| Security advisors | None reported |
+
+Credential handling: the `island_runtime` password was generated locally into ignored
+`.local/operator.env` (mode 600). A SCRAM-SHA-256 verifier was computed locally so the plaintext
+never transits the MCP channel or reaches Supabase query logs.
+
+### Resolved after the first pass
+
+1. **Anonymous sign-ins enabled.** A live signup now returns a token whose header and claims satisfy
+   every check in `apps/server/src/auth.ts`: `alg=ES256`, issuer
+   `https://dybismsqbzubwzzfrnfo.supabase.co/auth/v1`, `aud=authenticated`, `role=authenticated`,
+   UUID `sub`, `is_anonymous=true`, and all required claims present. The setting took roughly a
+   minute to propagate.
+2. **`island_runtime` now has LOGIN**, applied as a SCRAM verifier. It holds no elevated flags and,
+   importantly, **no membership in `island_owner`**, which readiness requires.
+3. **Region and pooler resolved by probe:** `aws-0-eu-central-1.pooler.supabase.com:5432`
+   (Frankfurt, matching `render.yaml`'s region) with username `island_runtime.<project_ref>`.
+   Connecting as the runtime role returned the expected readiness row, and `DELETE` on
+   `app.move_logs` plus `UPDATE` on `app.command_receipts` were both denied with `42501` — the
+   append-only guarantee holds against the real hosted database, not only locally.
+
+### Resolved: the pooler's TLS chain is privately rooted
+
+`apps/server/src/database.ts` uses `ssl: { rejectUnauthorized: true }` when `DATABASE_TLS=true`, with
+no CA supplied. The session pooler presents:
+
+```
+*.pooler.supabase.com  <-  Supabase Intermediate 2021 CA  <-  Supabase Root 2021 CA (self-signed)
+```
+
+That root is not in any public trust store, so Node fails with `SELF_SIGNED_CERT_IN_CHAIN` **before
+authentication**. Verified directly: every European pooler endpoint refused a verified-TLS
+connection, and the same connection succeeded once verification was relaxed for a one-off diagnostic.
+
+**The API therefore cannot reach the database on Render until the Supabase root CA is trusted.** The
+public `https://supabase.com/downloads/prod-ca-2021.crt` path now returns 404; download it from
+Database Settings → SSL Configuration. Two workable options, both preserving verification:
+
+- Add it as a Render **Secret File** and set `NODE_EXTRA_CA_CERTS` to that path. No image change, but
+  the file must be configured per service.
+- Commit the root certificate (it is a public root, not a secret), `COPY` it in `apps/server/Dockerfile`
+  and set `NODE_EXTRA_CA_CERTS`. Reproducible and testable in the container smoke.
+
+**Resolved by baking the root into the image.** `apps/server/supabase-root-2021.crt` is committed (a
+public root certificate, not a secret) and the runtime stage sets
+`NODE_EXTRA_CA_CERTS=/app/apps/server/supabase-root-2021.crt`. That *appends* to Node's default store,
+so JWKS over public CAs keeps working, and certificate verification is never disabled.
+
+Verified with the real deployment artifact, not just the mechanism: the built image was run against
+the hosted project with `NODE_ENV=production` and `DATABASE_TLS=true`, and returned
+`/health/ready -> 200 {"status":"ready"}` plus a correct `/api/v1/version`. That exercises verified
+TLS, the restricted runtime role and the boot-time schema/rules compatibility check together.
+
+**Trust caveat:** the public `prod-ca-2021.crt` download now 404s, so the certificate was extracted
+from the live pooler chain. Before trusting it for real play, download the CA from Database Settings →
+SSL Configuration and confirm it matches:
+
+```
+subject : CN = Supabase Root 2021 CA, O = Supabase Inc
+expires : 2031-04-26
+SHA-256 : 80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA
+```
+
+`scripts/hosted-maintenance.mjs` also pins `rejectUnauthorized: true`, so operator retention run from a
+laptop needs `NODE_EXTRA_CA_CERTS` pointed at the same file.
+
+Render remains entirely unconfigured, so `npm run hosted:preflight` cannot run yet.
+
 ## Blocked or unverified gates
 
 | Gate | Missing evidence/input |
 | --- | --- |
 | P7.1 Free accounts/regions | Supabase project and Render workspace selection/access. Current limits were researched, but account billing/allowances were not inspected. |
-| P7.2 Hosted migration/permissions | Operator access, reviewed export of existing hosted data, applied migration and hosted role/TLS tests. No hosted data was changed. |
+| P7.2 Hosted migration/permissions | **Largely done** — migration applied and permissions verified on a confirmed-empty project (see above). Still open: `island_runtime` LOGIN, verified-TLS pooler connection from the API, and anonymous sign-ins. |
 | P7.3 API deploy | Render service access, restricted runtime connection, HTTPS JWKS verification and measured ingress hop count. |
 | P7.4 Static deploy | Real API/Auth/Web public configuration and published Render URL. Linux packaging is verified. |
 | P7.5 Native installation | Real configuration, physical Android installation, Apple development team/provisioning and physical iPhone installation. |
@@ -61,6 +150,6 @@ The Linux Web build reports the existing optional Cupertino font warning and a D
 | P7.9 Operations | Hosted retention invocation and backup/restore rehearsal into an isolated test database. The runbook/tooling is prepared. |
 | P7.10 Final evidence | Service links, actual physical-device versions, acceptance logs and account quota settings. |
 
-Access checks: Supabase CLI reports **“Access token not provided”**; no Render API credential/connector is configured. The in-app browser connection fails before accessing a dashboard (`sandboxPolicy` metadata error). No authenticated browser profile was read through an alternative path. The account-selection question remains unanswered.
+Access checks: a Supabase MCP server is now configured and was used for provisioning (see above). The Supabase CLI still reports **“Access token not provided”**; no Render API credential/connector is configured. The in-app browser connection fails before accessing a dashboard (`sandboxPolicy` metadata error). No authenticated browser profile was read through an alternative path. The account-selection question remains unanswered.
 
 Next step: identify the intended Free Supabase project and Render workspace, authenticate through their supported login/connector flows, and carry out the runbook. Do not send database passwords, signing keys or access tokens in chat. Phase 7 stays open until the actual hosted/device gates pass.
