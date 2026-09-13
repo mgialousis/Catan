@@ -121,15 +121,20 @@ the hosted project with `NODE_ENV=production` and `DATABASE_TLS=true`, and retur
 `/health/ready -> 200 {"status":"ready"}` plus a correct `/api/v1/version`. That exercises verified
 TLS, the restricted runtime role and the boot-time schema/rules compatibility check together.
 
-**Trust caveat:** the public `prod-ca-2021.crt` download now 404s, so the certificate was extracted
-from the live pooler chain. Before trusting it for real play, download the CA from Database Settings →
-SSL Configuration and confirm it matches:
+**Trust anchor confirmed independently.** The public `prod-ca-2021.crt` download 404s, so the
+certificate was first extracted from the live pooler chain — which on its own is circular, since a
+forged chain would pass. It was then compared against the copy shipped in the official
+[`supabase/cli`](https://github.com/supabase/cli) repository, fetched over GitHub's publicly trusted
+TLS: **byte-identical DER**, SHA-256
+`80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA`.
+Two independent channels agreeing is a real anchor, not a self-assertion.
 
-```
-subject : CN = Supabase Root 2021 CA, O = Supabase Inc
-expires : 2031-04-26
-SHA-256 : 80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA
-```
+**Both published roots are bundled.** That repository also ships `prod-ca-2025.crt`: the same subject
+name but a different key (`5F:9B:77:95:1A:7A:A1:30:3F:9B:58:EE:A9:BF:A8:9E:35:8C:FD:C1:5F:97:86:FF:10:D4:93:0A:72:2C:9A:E2`,
+valid 2025-09-03 to 2035-09-01) — a root key rollover. The pooler serves the 2021 root today, so an
+image trusting only that root would lose database access without warning whenever Supabase migrates.
+`apps/server/supabase-roots.crt` therefore contains both, verified working against the hosted pooler
+and through the built image.
 
 `scripts/hosted-maintenance.mjs` also pins `rejectUnauthorized: true`, so operator retention run from a
 laptop needs `NODE_EXTRA_CA_CERTS` pointed at the same file.
@@ -237,20 +242,15 @@ Access: Supabase and Render MCP servers are both configured and were used for pr
 
 Phase 7 stays open. Nothing below is blocked on access any more; it is all acceptance work.
 
-1. **Confirm the committed CA out of band.** `apps/server/supabase-root-2021.crt` was extracted from
-   the live pooler chain because the public download 404s. Download the certificate from Database
-   Settings → SSL Configuration and check it matches SHA-256
-   `80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA`.
-   Until that is done the trust anchor is self-asserted.
-2. **Measure ingress and set `TRUSTED_PROXY_HOPS` (P7.3).** It is still the unmeasured default of `0`,
+1. **Measure ingress and set `TRUSTED_PROXY_HOPS` (P7.3).** It is still the unmeasured default of `0`,
    which means per-IP invitation limits may pool every player behind Render's address. Send differing
    and forged forwarding headers from two controlled clients and count the real hops.
-3. **Exercise process replacement on Render (P7.3).** Start a synthetic game, redeploy, and confirm the
+2. **Exercise process replacement on Render (P7.3).** Start a synthetic game, redeploy, and confirm the
    replacement fences the old writer and recovers the same game paused, as `tests/local/timers.test.mjs`
    proves locally.
-4. **Play real matches (P7.6, P7.7).** Physical phones on separate networks, three and four seats, one
+3. **Play real matches (P7.6, P7.7).** Physical phones on separate networks, three and four seats, one
    untimed and one timed. The browser play-through below covers none of that.
-5. **Native installation (P7.5)**, then **soak measurement (P7.8)**, **operations rehearsal (P7.9)**
+4. **Native installation (P7.5)**, then **soak measurement (P7.8)**, **operations rehearsal (P7.9)**
    including a hosted `hosted:retention` run and a backup/restore into an isolated database, and
    finally **evidence collection (P7.10)**.
 

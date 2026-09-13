@@ -24,9 +24,11 @@ Two operational notes learned from the first deployment. A Blueprint sync deploy
 creation, before `sync: false` variables can be filled, so the first API deploy will fail with
 `API startup failed` until the variables exist — that message is deliberately vague and does not
 indicate a build problem. And the session pooler chains to a private `Supabase Root 2021 CA`, so
-verified TLS needs that certificate; it is committed at `apps/server/supabase-root-2021.crt` and
-trusted through `NODE_EXTRA_CA_CERTS` in the runtime image. Operator scripts run from a laptop need
-the same variable pointed at the same file.
+verified TLS needs that certificate. `apps/server/supabase-roots.crt` bundles **both** published
+Supabase roots — the 2021 root the pooler serves today and the 2025 key rollover — and the runtime
+image trusts them through `NODE_EXTRA_CA_CERTS`, so a root migration will not take the API offline.
+Both were checked byte-for-byte against the official `supabase/cli` repository. Operator scripts run
+from a laptop need the same variable pointed at the same file.
 
 ## Accounts and costs
 
