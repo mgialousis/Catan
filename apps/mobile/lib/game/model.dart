@@ -71,6 +71,33 @@ class ActivityEntry {
     return summary.isEmpty ? 'nothing' : summary;
   }
 
+  /// Types whose message the engine writes as a verb phrase about the actor,
+  /// so it reads as `<name> <phrase>`. Kept as an allow-list rather than
+  /// inferred, because the alternatives are written as whole sentences and
+  /// would otherwise render as "Mira the host abandoned this game."; an
+  /// unlisted type still keeps its attribution through the dashed fallback.
+  static const _verbPhrase = {
+    'SETTLEMENT_BUILT',
+    'ROAD_BUILT',
+    'CITY_BUILT',
+    'DICE_ROLLED',
+    'ROBBER_MOVED',
+    'TRADE_CANCELLED',
+    'DEVELOPMENT_BOUGHT',
+    'DEVELOPMENT_PLAYED',
+    'TURN_ENDED',
+    'GAME_FINISHED',
+  };
+
+  /// Session events the server already phrases as complete sentences.
+  static const _wholeSentence = {
+    'ABANDON_GAME',
+    'PAUSE_GAME',
+    'RESUME_GAME',
+    'RECOVER_GAME',
+    'PRESENCE_PAUSE',
+  };
+
   String _name(GameSnapshot s, String? id) =>
       id == null ? 'A player' : (id == s.playerId ? 'You' : s.name(id));
 
@@ -108,7 +135,11 @@ class ActivityEntry {
         if (give == null || receive == null) return '$who — $message';
         return '$who traded ${_terms(give)} to the bank for ${_terms(receive)}.';
       default:
-        return actorPlayerId == null ? message : '$who — $message';
+        if (actorPlayerId == null || _wholeSentence.contains(type)) {
+          return message;
+        }
+        if (!_verbPhrase.contains(type)) return '$who — $message';
+        return '$who ${message[0].toLowerCase()}${message.substring(1)}';
     }
   }
 }

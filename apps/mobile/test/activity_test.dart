@@ -27,7 +27,68 @@ void main() {
     });
     expect(entry.resources, isNull);
     expect(entry.subjectPlayerId, isNull);
-    expect(entry.describe(snapshot), '${name(a)} — Built a road.');
+    expect(entry.describe(snapshot), '${name(a)} built a road.');
+  });
+
+  test('building and upgrading name the player', () {
+    for (final (type, message, expected) in [
+      ('SETTLEMENT_BUILT', 'Built a settlement.', 'built a settlement.'),
+      (
+        'CITY_BUILT',
+        'Upgraded a settlement to a city.',
+        'upgraded a settlement to a city.',
+      ),
+      ('DICE_ROLLED', 'Rolled 8.', 'rolled 8.'),
+      ('ROBBER_MOVED', 'Moved the robber.', 'moved the robber.'),
+      (
+        'DEVELOPMENT_BOUGHT',
+        'Bought a development card.',
+        'bought a development card.',
+      ),
+      ('DEVELOPMENT_PLAYED', 'Played knight.', 'played knight.'),
+      ('TURN_ENDED', 'Ended the turn.', 'ended the turn.'),
+    ]) {
+      expect(
+        parse({
+          'type': type,
+          'actorPlayerId': a,
+          'message': message,
+        }).describe(snapshot),
+        '${name(a)} $expected',
+        reason: type,
+      );
+    }
+    expect(
+      parse({
+        'type': 'CITY_BUILT',
+        'actorPlayerId': me,
+        'message': 'Upgraded a settlement to a city.',
+      }).describe(snapshot),
+      'You upgraded a settlement to a city.',
+    );
+  });
+
+  test('session notices keep the sentence the server wrote', () {
+    // Prefixing a name here would read "Mira the host abandoned this game."
+    expect(
+      parse({
+        'type': 'ABANDON_GAME',
+        'actorPlayerId': a,
+        'message': 'The host abandoned this game.',
+      }).describe(snapshot),
+      'The host abandoned this game.',
+    );
+  });
+
+  test('an unrecognised type still shows who did it', () {
+    expect(
+      parse({
+        'type': 'SOMETHING_NEW',
+        'actorPlayerId': a,
+        'message': 'Did something new.',
+      }).describe(snapshot),
+      '${name(a)} — Did something new.',
+    );
   });
 
   test('a discard names the player and the cards they put back', () {
