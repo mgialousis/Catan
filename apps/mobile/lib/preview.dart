@@ -140,7 +140,7 @@ class _PreviewRootState extends State<PreviewRoot> {
       gamePortProvider.overrideWithValue(port),
     ],
     child: MaterialApp(
-      title: 'Island Table practice',
+      title: 'Catan practice',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff256f61)),

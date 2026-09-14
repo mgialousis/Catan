@@ -52,7 +52,7 @@ class IslandTableApp extends StatelessWidget {
   const IslandTableApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Island Table',
+    title: 'Catan',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff256f61)),

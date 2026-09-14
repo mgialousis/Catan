@@ -98,7 +98,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Island Table',
+                          'Catan',
                           style: Theme.of(context).textTheme.headlineMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
