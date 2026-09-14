@@ -8,7 +8,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const ProviderScope(child: IslandTableApp()));
-    expect(find.text('Island Table'), findsOneWidget);
+    expect(find.text('Catan'), findsOneWidget);
     final button = tester.widget<FilledButton>(
       find.byWidgetPredicate((widget) => widget is FilledButton),
     );
