@@ -4,7 +4,7 @@ Status: **Phases 1–6 implemented with local evidence. Phase 7 in progress: hos
 
 Prepared: 2026-09-08. Workspace: `/Users/miltos/Downloads/Catan`.
 
-This document specifies the agreed Flutter, NestJS/TypeScript, Supabase and Render implementation. The user authorized implementation through Phase 7 and requested review of Claude’s updated findings before continuing. Work uses one agent and local, free services. See [Phase 4 verification](docs/phase-4-verification.md), [Phase 5 verification](docs/phase-5-verification.md), [Phase 6 verification](docs/phase-6-verification.md), [protocol decisions](docs/protocol.md) and [local setup](README.md). Phase 7 is underway; hosted access is available, while migration-history reconciliation, deployment of the latest fixes and physical-device acceptance remain pending.
+This document specifies the agreed Flutter, NestJS/TypeScript, Supabase and Render implementation. The user authorized implementation through Phase 7 and requested review of Claude’s updated findings before continuing. Work uses one agent and local, free services. See [Phase 4 verification](docs/phase-4-verification.md), [Phase 5 verification](docs/phase-5-verification.md), [Phase 6 verification](docs/phase-6-verification.md), [protocol decisions](docs/protocol.md) and [local setup](README.md). Phase 7 is underway; hosted access is available, migration history is reconciled and the reviewed fixes are deployed. Physical-device acceptance remains pending.
 
 ## Scope and operating assumptions
 
@@ -591,7 +591,7 @@ Dependencies: prior exit gates; free hosting accounts and access to test devices
 - [ ] P7.9 Document game-night startup, pause/resume, backup/restore, rollback, guest identity loss and quota exhaustion.
 - [ ] P7.10 Record tested versions, devices, links, known limitations and acceptance evidence; leave no paid resource enabled by default.
 
-Local preparation and hosted progress (Phase 7 remains partial): Claude R5-1–R5-4 addressed; Linux API and pinned Flutter Web builds verified; restricted operator retention and a finite hosted preflight added; dedicated Android release signing configured; native/rematch invitations support the shared Web URL. See [Phase 7 evidence](docs/phase-7-verification.md). Hosted permissions/TLS and real URLs are verified. Deployment of the latest fixes, migration-history reconciliation, measured ingress, iOS provisioning, backup/restore rehearsal, full matches and soak measurements remain open.
+Local preparation and hosted progress (Phase 7 remains partial): Claude R5-1–R5-4 addressed; Linux API and pinned Flutter Web builds verified; restricted operator retention and a finite hosted preflight added; dedicated Android release signing configured; native/rematch invitations support the shared Web URL. See [Phase 7 evidence](docs/phase-7-verification.md). Hosted permissions/TLS and real URLs are verified. The reviewed fixes are deployed and migration history is reconciled. Measured ingress, iOS provisioning, backup/restore rehearsal, full matches and soak measurements remain open.
 
 Exit gate: friends can open an invitation and complete the base game on separate phones, with privacy and recovery checks passing and measured usage within the selected free allowances.
 

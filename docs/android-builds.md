@@ -26,6 +26,13 @@ and APK signature verification must pass before an artifact is uploaded.
 The APK command keeps Flutter's pub/tooling refresh enabled so release plugin registration
 excludes `integration_test` after running tests. A final check rejects any dependency lockfile change.
 
+Verified build: [run 34841315094](https://github.com/mgialousis/Catan/actions/runs/34841315094)
+from `d1e3505`, with [APK artifact](https://github.com/mgialousis/Catan/actions/runs/34841315094/artifacts/10346371561).
+It produced version `0.1.0` / code `1002`, package `dev.islandtable.island_table`, size
+54,229,885 bytes. The downloaded APK's checksum matched, its signature matched the existing
+private release key's public certificate, and it was not debuggable. SHA-256:
+`108310bffef05fb6ee623447cbc78c2cb36b923af7dea1247a8339ae73ee771c`.
+
 Repository **variables**, containing public app configuration:
 
 - `API_URL`

@@ -30,16 +30,22 @@ image trusts them through `NODE_EXTRA_CA_CERTS`, so a root migration will not ta
 Both were checked byte-for-byte against the official `supabase/cli` repository. Operator scripts run
 from a laptop need the same variable pointed at the same file.
 
-As checked on 2026-09-14, both live services still run `72d76f4`; the source changes in
-`4f26afd` (both CA roots) and `f500307` (invitation/resource UI) have **not** been deployed.
-Publish a reviewed commit and explicitly deploy both services between games, then rerun preflight.
+On 2026-09-14 both services were explicitly deployed from `85326a0`, including the two-root
+certificate bundle and reviewed invitation/resource UI fixes. Hosted preflight passed. With the
+user's approval, deployment preserved the saved three-player game at turn 21: it remained paused,
+public/private/server-state hashes matched, and one `RECOVER_GAME` log was appended.
 
-Before the next database deployment, reconcile migration history. The remote record is version
-`20260913200406`, name `20260909000100_foundation`, while the checked-in file has version
-`20260909000100`. Equal names do not align the version IDs. Verify the applied SQL/schema first,
-then repair only the migration tracking records and confirm the next dry run does not reapply the
-foundation. Do not rerun the foundation over the populated schema. See
-[Supabase migration troubleshooting](https://supabase.com/docs/guides/deployment/database-migrations#diagnosing-and-fixing-sync-errors).
+Migration history was reconciled the same day through an atomic MCP metadata update:
+`20260913200406 / 20260909000100_foundation` became `20260909000100 / foundation`.
+The recorded SQL matches the checked-in migration byte-for-byte after trimming outer whitespace;
+local/hosted tables, columns, indexes, constraints, functions and RLS policies also matched. The
+original SQL was preserved, and no application schema or game data was changed by the repair.
+A private before-record/schema copy is in ignored `.local/migration-audit/`.
+
+MCP authentication is available; Supabase CLI authentication is still separate and currently
+missing. Before a future CLI database deployment, authenticate the CLI and review
+`supabase db push --dry-run --skip-vault`; no hosted CLI dry run is claimed here. Do not reapply
+the foundation. See [Supabase migration troubleshooting](https://supabase.com/docs/guides/deployment/database-migrations#diagnosing-and-fixing-sync-errors).
 
 ## Accounts and costs
 

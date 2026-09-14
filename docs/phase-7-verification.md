@@ -258,3 +258,54 @@ Consider also the `SET_READY` stale-version observation recorded above — a sma
 change if you agree with it.
 
 Never put database passwords, signing keys or access tokens in chat or in Git.
+
+## Reviewed deployment and history repair — 2026-09-14
+
+The user authorized deployment of the reviewed fixes and reconciliation of migration history,
+then explicitly approved deployment while preserving the existing paused game.
+
+- Both Render services report **live** from `85326a0`.
+  [Backend deployment](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330/deploys/dep-dajibdek1f9s73douoj0)
+  and [Web deployment](https://dashboard.render.com/static/srv-dajgfdnqj5pc73dhl33g/deploys/dep-dajibdmk1f9s73doupog).
+- Hosted preflight passed readiness, protocol/rules compatibility, static cache policy and
+  unauthenticated Socket.IO rejection. Ten warm version requests measured 63 ms median,
+  159 ms p95; these are endpoint probes, not gameplay latency.
+- The saved three-player game remained **PAUSED**, at turn **21**, phase **AWAIT_ROLL**.
+  Public/private/server-state hashes and the room identity matched before/after; seats remained 3.
+  Version advanced 67 → 68 and log count 68 → 69. The appended event was a system
+  `RECOVER_GAME`, consistent with process replacement. This verifies recovery of a saved paused
+  game, not every active-game restart/fencing scenario.
+- Migration history now records `20260909000100 / foundation`. The previous record was
+  `20260913200406 / 20260909000100_foundation`. SQL was byte-identical to the checked-in file
+  after trimming outer whitespace. Local/hosted table metadata, columns, indexes, constraints,
+  functions and RLS policies matched. A guarded transaction changed only version/name and
+  retained the original statements (`md5=a4abf6274a1df60c2678d2d427587d5a`). MCP reread confirmed
+  the corrected identity. The original record/schema snapshot is backed up under ignored
+  `.local/migration-audit/`. No application DDL was run or game data changed by the repair.
+- CLI `migration list --project-ref` still requires a separate Supabase CLI access token. No
+  hosted CLI dry run was performed. Before the next schema deployment, authenticate the CLI
+  and review `db push --dry-run --skip-vault`.
+- The user authorized making the audited repository public; GitHub confirms public visibility
+  and enabled secret scanning/push protection.
+- `671bd48` adds a signed Android APK workflow with pinned actions/tooling, encrypted signing
+  secrets, public hosted configuration, tests and signature verification. Physical installation
+  is still a separate gate; see [Android build setup](android-builds.md).
+
+Measured ingress, broader hosted recovery/fencing, full mixed-network matches, physical iOS/
+Android acceptance, soak measurement and backup/restore rehearsal remain open.
+
+### Android APK automation verified
+
+[GitHub run 34841315094](https://github.com/mgialousis/Catan/actions/runs/34841315094)
+passed from `d1e3505`: clean Flutter analysis, 269 Flutter tests, the CI signing setup test,
+signed release build, unchanged dependency lockfile, signature verification and artifact upload.
+The initial run exposed stale `integration_test` registration after tests when using `--no-pub`;
+the fix lets Flutter regenerate platform tooling in release mode.
+
+The [downloadable APK artifact](https://github.com/mgialousis/Catan/actions/runs/34841315094/artifacts/10346371561)
+contains a 54,229,885-byte APK and checksum. Local verification matched the checksum and the
+existing release signing certificate, confirmed version `0.1.0+1002` and non-debuggable status,
+and found no keystore/signing-properties files inside the APK. SHA-256:
+`108310bffef05fb6ee623447cbc78c2cb36b923af7dea1247a8339ae73ee771c`.
+No physical installation is claimed. The download remains available for the workflow's 30-day
+artifact retention period, and a new main-branch app/build change or manual run produces another.
