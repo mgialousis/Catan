@@ -3077,6 +3077,26 @@
         "message": {
           "type": "string",
           "maxLength": 200
+        },
+        "subjectPlayerId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resources": {
+          "$ref": "#/definitions/resources"
+        },
+        "give": {
+          "$ref": "#/definitions/resources"
+        },
+        "receive": {
+          "$ref": "#/definitions/resources"
         }
       },
       "required": [

@@ -126,6 +126,50 @@ class _GameScreenState extends ConsumerState<GameScreen>
     _declineDialogOpen = false;
   }
 
+  /// Log events worth interrupting for. Both are things another player did to
+  /// the table that are easy to miss in the log alone.
+  static const _announced = {'RESOURCES_DISCARDED', 'RESOURCE_STOLEN'};
+  int? _announcedThrough;
+
+  void _announceActivity(GameView next) {
+    final snapshot = next.snapshot;
+    if (snapshot == null || next.activity.isEmpty) return;
+    final highest = next.activity
+        .map((e) => e.sequence)
+        .reduce((a, b) => a > b ? a : b);
+    // First delivery only establishes the high-water mark: joining a game in
+    // progress must not replay its whole backlog as notifications.
+    if (_announcedThrough == null) {
+      _announcedThrough = highest;
+      return;
+    }
+    if (highest <= _announcedThrough!) return;
+    final fresh =
+        next.activity
+            .where(
+              (e) =>
+                  e.sequence > _announcedThrough! &&
+                  _announced.contains(e.type),
+            )
+            .toList()
+          ..sort((a, b) => a.sequence.compareTo(b.sequence));
+    _announcedThrough = highest;
+    if (fresh.isEmpty) return;
+    // A seven makes every over-full player discard at once, so these arrive in
+    // batches; one notice listing them beats four that replace each other.
+    final lines = fresh.map((e) => e.describe(snapshot)).toList();
+    _showFeedback(
+      SnackBar(
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [for (final line in lines.take(4)) Text(line)],
+        ),
+        duration: Duration(seconds: lines.length > 1 ? 6 : 4),
+      ),
+    );
+  }
+
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason> _showFeedback(
     SnackBar bar,
   ) {
@@ -190,6 +234,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
           });
         }
       }
+      _announceActivity(next);
       final card = next.drawnCard;
       if (card != null && card != previous?.drawnCard) {
         _showFeedback(
@@ -343,7 +388,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
           const SizedBox(height: 16),
           _hand(view, snapshot),
           const SizedBox(height: 16),
-          _activity(view),
+          _activity(view, snapshot),
         ],
       );
       if (landscape) {
@@ -1017,7 +1062,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
     ),
   );
 
-  Widget _activity(GameView view) => Card(
+  Widget _activity(GameView view, GameSnapshot s) => Card(
     child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1038,7 +1083,10 @@ class _GameScreenState extends ConsumerState<GameScreen>
             for (final entry in view.activity.reversed)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text('· $entry', style: const TextStyle(fontSize: 12)),
+                child: Text(
+                  '· ${entry.describe(s)}',
+                  style: const TextStyle(fontSize: 12),
+                ),
               ),
         ],
       ),

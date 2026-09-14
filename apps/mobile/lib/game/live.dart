@@ -35,7 +35,7 @@ class LiveGamePort extends GamePort {
   Timer? _syncTimeout;
   int? _before;
   bool _historyStarted = false, _historyEnded = false;
-  final Map<int, List<String>> _history = {};
+  final Map<int, List<ActivityEntry>> _history = {};
   @override
   Stream<MapEntry<String, dynamic>> get events => _events.stream;
   void _emit(String key, dynamic value) {
@@ -138,7 +138,7 @@ class LiveGamePort extends GamePort {
           _publish(next);
           _history[next.version] = [
             for (final e in value['activity'] as List)
-              (e as Map)['message'] as String,
+              ActivityEntry.parse(next.version, e as Map),
           ];
           _emitHistory();
         case 'game.version':
@@ -218,7 +218,7 @@ class LiveGamePort extends GamePort {
           throw const FormatException('Invalid history');
         }
         _history[sequence] = [
-          for (final e in activity) (e as Map)['message'] as String,
+          for (final e in activity) ActivityEntry.parse(sequence, e as Map),
         ];
       }
       _before = page['nextBefore'] as int?;

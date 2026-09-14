@@ -83,7 +83,13 @@ test('seven records 7/8/9/10 thresholds excluding development cards and waits fo
   for (const [index, type, n] of [[3, 'ore', 5], [1, 'lumber', 4], [2, 'wool', 4]]) {
     const result = act(state, 'DISCARD_RESOURCES', { resources: bundle({ [type]: n }) }, ids[index]);
     assert.equal(projectEffects(result.effects, ids[0]).resourceTransfers.length, 0);
-    assert.equal(projectEffects(result.effects, ids[index]).resourceTransfers.length, 1); state = result.state;
+    assert.equal(projectEffects(result.effects, ids[index]).resourceTransfers.length, 1);
+    // Discards are face up in the physical game: a bystander sees who discarded
+    // what, even though the transfer itself stays visible only to the discarder.
+    const announced = projectEffects(result.effects, ids[0]).activity.find(a => a.type === 'RESOURCES_DISCARDED');
+    assert.equal(announced.actorPlayerId, ids[index]);
+    assert.deepEqual(announced.resources, bundle({ [type]: n }));
+    state = result.state;
   }
   assert.equal(state.publicState.phase, 'ROBBER_MOVE');
 });
@@ -101,6 +107,12 @@ test('robber filters victims, samples individual cards and conceals stolen types
     assert.equal(result.state.privateState[actor].resources[index === 0 ? 'brick' : 'ore'], 1);
     assert.equal(projectEffects(result.effects, observer).resourceTransfers.length, 0);
     assert.equal(projectEffects(result.effects, victim).resourceTransfers.length, 1);
+    // Who was robbed is public; which card was taken must never become public.
+    const theft = projectEffects(result.effects, observer).activity.find(a => a.type === 'RESOURCE_STOLEN');
+    assert.equal(theft.actorPlayerId, actor);
+    assert.equal(theft.subjectPlayerId, victim);
+    assert.equal(theft.resources, undefined);
+    assert.ok(!JSON.stringify(theft).includes('brick') && !JSON.stringify(theft).includes('ore'));
     assert.equal(result.state.publicState.phase, 'ACTION');
   }
   const empty = Object.keys(initial.publicState.board.hexes).find(h => h !== initial.publicState.robberHexId && !initial.publicState.board.hexes[h].vertexIds.some(v => initial.publicState.buildings[v]?.ownerPlayerId === victim));
@@ -128,7 +140,11 @@ test('harbours use the best owned rate, require a building, and exchange stock a
   for (const type of Object.keys(emptyResources())) assert.equal(bankRate(p, actor, type), 2);
   p.buildings = {}; const generic = Object.values(p.board.ports).find(p => p.resourceType === null); p.buildings[generic.vertexIds[1]] = { ownerPlayerId: actor, type: 'SETTLEMENT' }; assert.equal(bankRate(p, actor, 'ore'), 3);
   const rate = bankRate(state.publicState, actor, 'brick'); resources(state, { [actor]: { brick: rate * 2 } });
-  const next = act(state, 'BANK_TRADE', { giveType: 'brick', receiveType: 'ore', receiveCount: 2 }).state;
+  const bank = act(state, 'BANK_TRADE', { giveType: 'brick', receiveType: 'ore', receiveCount: 2 });
+  const traded = projectEffects(bank.effects, state.serverState.turnOrder[1]).activity.find(e => e.type === 'BANK_TRADE');
+  assert.deepEqual(traded.receive, bundle({ ore: 2 }));
+  assert.equal(traded.give.brick > 0, true);
+  const next = bank.state;
   assert.equal(next.privateState[actor].resources.ore, 2); assert.equal(next.privateState[actor].resources.brick, 0);
   resources(state, { [state.serverState.turnOrder[1]]: { ore: 19 } });
   rejects(state, 'BANK_TRADE', { giveType: 'brick', receiveType: 'ore', receiveCount: 1 }, 'BANK_UNAVAILABLE');
@@ -140,11 +156,28 @@ test('trade offers are nonbinding, active-player constrained, revision checked a
   const payload = { targetPlayerId: null, give: bundle({ brick: 1 }), receive: bundle({ ore: 1 }) };
   rejects(state, 'PROPOSE_TRADE', { ...payload, give: emptyResources() }, 'INVALID_PAYLOAD');
   rejects(state, 'PROPOSE_TRADE', { targetPlayerId: c, give: bundle({ ore: 1 }), receive: bundle({ wool: 1 }) }, 'NOT_YOUR_TURN', b);
-  state = act(state, 'PROPOSE_TRADE', payload).state; let offer = Object.values(state.publicState.trades)[0];
+  const proposal = act(state, 'PROPOSE_TRADE', payload);
+  state = proposal.state; let offer = Object.values(state.publicState.trades)[0];
   assert.equal(state.privateState[a].resources.brick, 2);
-  state = act(state, 'DECLINE_TRADE', { offerId: offer.offerId, offerRevision: 0 }, c).state;
+  // Terms are public and always stated from the acting player's own side.
+  const proposed = projectEffects(proposal.effects, c).activity.find(e => e.type === 'TRADE_PROPOSED');
+  assert.equal(proposed.actorPlayerId, a);
+  assert.equal(proposed.subjectPlayerId, null);
+  assert.deepEqual(proposed.give, bundle({ brick: 1 }));
+  assert.deepEqual(proposed.receive, bundle({ ore: 1 }));
+  const refusal = act(state, 'DECLINE_TRADE', { offerId: offer.offerId, offerRevision: 0 }, c);
+  const declined = projectEffects(refusal.effects, b).activity.find(e => e.type === 'TRADE_DECLINED');
+  assert.equal(declined.actorPlayerId, c);
+  assert.equal(declined.subjectPlayerId, a);
+  state = refusal.state;
   rejects(state, 'ACCEPT_TRADE', { offerId: offer.offerId, offerRevision: 0 }, 'TRADE_UNAVAILABLE', b);
-  state = act(state, 'ACCEPT_TRADE', { offerId: offer.offerId, offerRevision: 1 }, b).state;
+  const acceptance = act(state, 'ACCEPT_TRADE', { offerId: offer.offerId, offerRevision: 1 }, b);
+  const accepted = projectEffects(acceptance.effects, c).activity.find(e => e.type === 'TRADE_ACCEPTED');
+  assert.equal(accepted.actorPlayerId, b);
+  assert.equal(accepted.subjectPlayerId, a);
+  assert.deepEqual(accepted.give, bundle({ ore: 1 }));
+  assert.deepEqual(accepted.receive, bundle({ brick: 1 }));
+  state = acceptance.state;
   assert.equal(state.privateState[a].resources.ore, 1); assert.equal(state.privateState[b].resources.brick, 1);
   rejects(state, 'ACCEPT_TRADE', { offerId: offer.offerId, offerRevision: 1 }, 'TRADE_UNAVAILABLE', b);
   state = act(state, 'PROPOSE_TRADE', payload).state; offer = Object.values(state.publicState.trades)[0];

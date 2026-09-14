@@ -6035,5 +6035,160 @@
         "retryable": false
       }
     }
+  },
+  {
+    "name": "accept activity without optional detail",
+    "schema": "activity",
+    "valid": true,
+    "value": {
+      "type": "ROAD_BUILT",
+      "actorPlayerId": "11111111-1111-4111-8111-111111111111",
+      "message": "Built a road."
+    }
+  },
+  {
+    "name": "accept activity with discarded resources",
+    "schema": "activity",
+    "valid": true,
+    "value": {
+      "type": "RESOURCES_DISCARDED",
+      "actorPlayerId": "11111111-1111-4111-8111-111111111111",
+      "message": "Discarded the required resource cards.",
+      "resources": {
+        "brick": 2,
+        "lumber": 0,
+        "wool": 0,
+        "grain": 0,
+        "ore": 1
+      }
+    }
+  },
+  {
+    "name": "accept activity naming a robbed player",
+    "schema": "activity",
+    "valid": true,
+    "value": {
+      "type": "RESOURCE_STOLEN",
+      "actorPlayerId": "11111111-1111-4111-8111-111111111111",
+      "message": "Stole one resource card.",
+      "subjectPlayerId": "22222222-2222-4222-8222-222222222222"
+    }
+  },
+  {
+    "name": "accept activity with a null subject",
+    "schema": "activity",
+    "valid": true,
+    "value": {
+      "type": "GAME_CREATED",
+      "actorPlayerId": null,
+      "message": "The island is ready for initial placement.",
+      "subjectPlayerId": null
+    }
+  },
+  {
+    "name": "reject unknown field activity",
+    "schema": "activity",
+    "valid": false,
+    "value": {
+      "type": "RESOURCE_STOLEN",
+      "actorPlayerId": "11111111-1111-4111-8111-111111111111",
+      "message": "Stole one resource card.",
+      "stolenResource": "ore"
+    }
+  },
+  {
+    "name": "reject activity subject that is not an id",
+    "schema": "activity",
+    "valid": false,
+    "value": {
+      "type": "RESOURCE_STOLEN",
+      "actorPlayerId": "11111111-1111-4111-8111-111111111111",
+      "message": "Stole one resource card.",
+      "subjectPlayerId": "Bo"
+    }
+  },
+  {
+    "name": "reject activity resources missing a type",
+    "schema": "activity",
+    "valid": false,
+    "value": {
+      "type": "RESOURCES_DISCARDED",
+      "actorPlayerId": "11111111-1111-4111-8111-111111111111",
+      "message": "Discarded the required resource cards.",
+      "resources": {
+        "brick": 1,
+        "lumber": 0,
+        "wool": 0,
+        "grain": 0
+      }
+    }
+  },
+  {
+    "name": "accept activity for an accepted trade",
+    "schema": "activity",
+    "valid": true,
+    "value": {
+      "type": "TRADE_ACCEPTED",
+      "actorPlayerId": "22222222-2222-4222-8222-222222222222",
+      "message": "Completed a player trade.",
+      "subjectPlayerId": "11111111-1111-4111-8111-111111111111",
+      "give": {
+        "brick": 0,
+        "lumber": 0,
+        "wool": 0,
+        "grain": 0,
+        "ore": 1
+      },
+      "receive": {
+        "brick": 1,
+        "lumber": 0,
+        "wool": 0,
+        "grain": 0,
+        "ore": 0
+      }
+    }
+  },
+  {
+    "name": "accept activity for a trade offered to the table",
+    "schema": "activity",
+    "valid": true,
+    "value": {
+      "type": "TRADE_PROPOSED",
+      "actorPlayerId": "11111111-1111-4111-8111-111111111111",
+      "message": "Proposed a resource trade.",
+      "subjectPlayerId": null,
+      "give": {
+        "brick": 1,
+        "lumber": 0,
+        "wool": 0,
+        "grain": 0,
+        "ore": 0
+      },
+      "receive": {
+        "brick": 0,
+        "lumber": 0,
+        "wool": 0,
+        "grain": 0,
+        "ore": 1
+      }
+    }
+  },
+  {
+    "name": "reject activity trade terms that are not resources",
+    "schema": "activity",
+    "valid": false,
+    "value": {
+      "type": "TRADE_ACCEPTED",
+      "actorPlayerId": "22222222-2222-4222-8222-222222222222",
+      "message": "Completed a player trade.",
+      "give": "one brick",
+      "receive": {
+        "brick": 0,
+        "lumber": 0,
+        "wool": 0,
+        "grain": 0,
+        "ore": 1
+      }
+    }
   }
 ]

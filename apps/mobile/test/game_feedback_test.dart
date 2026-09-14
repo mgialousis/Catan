@@ -107,6 +107,62 @@ void main() {
     },
   );
 
+  testWidgets('discards and thefts are announced and then logged', (t) async {
+    final port = await showGame(t, 'action');
+    final s = GameSnapshot.parse(uiSnapshot('action'), uiProtocol);
+    final others = s.orderedPlayers
+        .map((p) => p['id'] as String)
+        .where((id) => id != s.playerId)
+        .toList();
+    final a = others[0], b = others[1];
+    ActivityEntry built(int sequence) => ActivityEntry(
+      sequence: sequence,
+      type: 'ROAD_BUILT',
+      message: 'Built a road.',
+      actorPlayerId: a,
+    );
+    final discard = ActivityEntry(
+      sequence: 2,
+      type: 'RESOURCES_DISCARDED',
+      message: 'Discarded the required resource cards.',
+      actorPlayerId: a,
+      resources: {'brick': 2, 'lumber': 0, 'wool': 0, 'grain': 0, 'ore': 1},
+    );
+    final theft = ActivityEntry(
+      sequence: 3,
+      type: 'RESOURCE_STOLEN',
+      message: 'Stole one resource card.',
+      actorPlayerId: b,
+      subjectPlayerId: a,
+    );
+
+    // The first delivery only establishes the high-water mark.
+    port.emit('history', [built(1)]);
+    await t.pumpAndSettle();
+    expect(find.textContaining('discarded'), findsNothing);
+
+    port.emit('history', [built(1), discard, theft]);
+    await t.pumpAndSettle();
+    final discarded = '${s.name(a)} discarded 2 brick · 1 ore.';
+    final stolen = '${s.name(b)} stole one resource card from ${s.name(a)}.';
+    expect(find.text(discarded), findsOneWidget);
+    expect(find.text(stolen), findsOneWidget);
+
+    // Re-delivering the same log must not announce them a second time.
+    await t.pumpAndSettle();
+    await t.pump(const Duration(seconds: 8));
+    await t.pumpAndSettle();
+    port.emit('history', [built(1), discard, theft]);
+    await t.pumpAndSettle();
+    expect(find.text(stolen), findsNothing);
+
+    // They remain in the log itself.
+    await reveal(t, find.text('· $stolen'));
+    await reveal(t, find.text('· $discarded'));
+    expect(port.commands, isEmpty);
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('a decline on your own offer is announced once', (t) async {
     final port = await showGame(t, 'action');
     final base = uiSnapshot('waiting');

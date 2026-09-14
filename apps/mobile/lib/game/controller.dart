@@ -39,7 +39,7 @@ class GameView {
   final bool connected, sending;
   final JsonMap? pending;
   final String? message, drawnCard, selection, target, setupVertex, serverTime;
-  final List<String> activity;
+  final List<ActivityEntry> activity;
 
   /// Actual owner-hand changes across a single, observed dice-roll command.
   final Map<String, int>? rollGains;
@@ -57,7 +57,7 @@ class GameView {
     bool? sending,
     String? message,
     bool clearMessage = false,
-    List<String>? activity,
+    List<ActivityEntry>? activity,
     String? drawnCard,
     bool clearDraw = false,
     String? selection,
@@ -190,9 +190,11 @@ class GameController extends Notifier<GameView> {
       case 'message':
         state = state.copy(message: event.value as String);
       case 'history':
-        state = state.copy(activity: (event.value as List).cast<String>());
+        state = state.copy(
+          activity: (event.value as List).cast<ActivityEntry>(),
+        );
       case 'activity':
-        final entries = (event.value as List).cast<String>();
+        final entries = (event.value as List).cast<ActivityEntry>();
         state = state.copy(
           activity: [
             ...state.activity,

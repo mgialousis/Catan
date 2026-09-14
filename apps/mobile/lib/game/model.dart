@@ -23,6 +23,96 @@ String resourceSummary(Map value) => resourceTypes
     .map((r) => '${value[r]} $r')
     .join(' · ');
 
+/// Reads the optional public resource detail on a log entry. Top level because
+/// `ActivityEntry.resources` would otherwise shadow the `resources` helper.
+Map<String, int>? detailResources(Object? value) =>
+    value is Map ? resources(value) : null;
+
+/// One entry of the public log. The server sends ids rather than prose, because
+/// it has no nicknames and the log is durable, so the sentence is composed here
+/// where names can still be resolved.
+class ActivityEntry {
+  const ActivityEntry({
+    required this.sequence,
+    required this.type,
+    required this.message,
+    this.actorPlayerId,
+    this.subjectPlayerId,
+    this.resources,
+    this.give,
+    this.receive,
+  });
+
+  /// Tolerant about the optional detail on purpose: entries written before
+  /// those fields existed are still in app.move_logs and must keep rendering.
+  factory ActivityEntry.parse(int sequence, Map entry) {
+    return ActivityEntry(
+      sequence: sequence,
+      type: entry['type'] as String,
+      message: entry['message'] as String,
+      actorPlayerId: entry['actorPlayerId'] as String?,
+      subjectPlayerId: entry['subjectPlayerId'] as String?,
+      resources: detailResources(entry['resources']),
+      give: detailResources(entry['give']),
+      receive: detailResources(entry['receive']),
+    );
+  }
+
+  final int sequence;
+  final String type, message;
+  final String? actorPlayerId, subjectPlayerId;
+  final Map<String, int>? resources;
+
+  /// Trade terms, always stated from [actorPlayerId]'s own side.
+  final Map<String, int>? give, receive;
+
+  String _terms(Map<String, int>? value) {
+    final summary = value == null ? '' : resourceSummary(value);
+    return summary.isEmpty ? 'nothing' : summary;
+  }
+
+  String _name(GameSnapshot s, String? id) =>
+      id == null ? 'A player' : (id == s.playerId ? 'You' : s.name(id));
+
+  /// The sentence shown in the log and in the matching notification.
+  String describe(GameSnapshot s) {
+    final who = _name(s, actorPlayerId);
+    switch (type) {
+      case 'RESOURCES_DISCARDED':
+        final summary = resources == null ? '' : resourceSummary(resources!);
+        return summary.isEmpty
+            ? '$who discarded the required resource cards.'
+            : '$who discarded $summary.';
+      case 'RESOURCE_STOLEN':
+        return subjectPlayerId == null
+            ? '$who stole one resource card.'
+            : '$who stole one resource card from ${_name(s, subjectPlayerId)}.';
+      case 'TRADE_PROPOSED':
+        if (give == null || receive == null) return '$who — $message';
+        final to = subjectPlayerId == null
+            ? 'the table'
+            : _name(s, subjectPlayerId);
+        return '$who offered $to ${_terms(give)} for ${_terms(receive)}.';
+      case 'TRADE_ACCEPTED':
+        if (give == null || receive == null) return '$who — $message';
+        final from = subjectPlayerId == null
+            ? 'another player'
+            : _name(s, subjectPlayerId);
+        return '$who traded ${_terms(give)} to $from for ${_terms(receive)}.';
+      case 'TRADE_DECLINED':
+        return subjectPlayerId == null
+            ? '$who declined a trade offer.'
+            : '$who declined the trade offer from '
+                  '${_name(s, subjectPlayerId)}.';
+      case 'BANK_TRADE':
+        if (give == null || receive == null) return '$who — $message';
+        return '$who traded ${_terms(give)} to the bank for ${_terms(receive)}.';
+      default:
+        return actorPlayerId == null ? message : '$who — $message';
+    }
+  }
+}
+
 /// Only a validated recipient snapshot enters this model; never a canonical state.
 class GameSnapshot {
   GameSnapshot._(this.json);

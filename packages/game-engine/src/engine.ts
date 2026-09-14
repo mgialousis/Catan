@@ -7,7 +7,7 @@ import { RuleError, requireRule, emptyResources, total, has, bundle, transfer, C
 
 export interface EngineContext { random: RandomSource; now: string }
 export type EngineEffect =
-  | { type: 'PUBLIC_ACTIVITY'; actorPlayerId: string | null; action: string; message: string }
+  | { type: 'PUBLIC_ACTIVITY'; actorPlayerId: string | null; action: string; message: string; subjectPlayerId?: string | null; resources?: Resources; give?: Resources; receive?: Resources }
   | { type: 'RESOURCE_TRANSFER'; fromPlayerId: string | null; toPlayerId: string | null; resources: Resources; reason: string; visibleTo: 'PUBLIC' | readonly string[] }
   | { type: 'DEVELOPMENT_DRAW'; playerId: string; card: DevelopmentCard }
   | { type: 'DEVELOPMENT_PLAY'; playerId: string; card: DevelopmentCard }
@@ -76,7 +76,7 @@ export function applyCommand(previous: CanonicalState, actorPlayerId: string, co
   const hand = privateState[actor]!, player = p.players[actor]!;
   const active = () => requireRule(actor === p.activePlayerId, 'NOT_YOUR_TURN');
   const phase = (...allowed: Phase[]) => requireRule(allowed.includes(p.phase), 'WRONG_PHASE');
-  const activity = (action: string, message: string) => effects.push({ type: 'PUBLIC_ACTIVITY', actorPlayerId: actor, action, message });
+  const activity = (action: string, message: string, detail?: { subjectPlayerId?: string | null; resources?: Resources; give?: Resources; receive?: Resources }) => effects.push({ type: 'PUBLIC_ACTIVITY', actorPlayerId: actor, action, message, ...detail });
   function move(from: string | null, to: string | null, resources: Resources, reason: string, visibleTo: 'PUBLIC' | string[] = 'PUBLIC') {
     transfer(from ? privateState[from]!.resources : bank, to ? privateState[to]!.resources : bank, resources, from ? 'INSUFFICIENT_RESOURCES' : 'BANK_UNAVAILABLE');
     if (total(resources)) effects.push({ type: 'RESOURCE_TRANSFER', fromPlayerId: from, toPlayerId: to, resources: { ...resources }, reason, visibleTo });
@@ -159,7 +159,7 @@ export function applyCommand(previous: CanonicalState, actorPlayerId: string, co
     case 'DISCARD_RESOURCES': {
       phase('DISCARD_REQUIRED'); requireRule(hand.discardRequired > 0, 'WRONG_PHASE'); const resources = bundle(payload.resources);
       requireRule(total(resources) === hand.discardRequired, 'INVALID_PAYLOAD'); move(actor, null, resources, 'DISCARD', [actor]); hand.discardRequired = 0;
-      activity('RESOURCES_DISCARDED', 'Discarded the required resource cards.');
+      activity('RESOURCES_DISCARDED', 'Discarded the required resource cards.', { resources: { ...resources } });
       p.requiredPlayerIds = state.serverState.turnOrder.filter(id => privateState[id]!.discardRequired > 0);
       if (!p.requiredPlayerIds.length) robber('ACTION'); break;
     }
@@ -174,7 +174,7 @@ export function applyCommand(previous: CanonicalState, actorPlayerId: string, co
       let index = random.int(total(privateState[victim]!.resources), 'stolen-card');
       const resources = emptyResources();
       for (const type of RESOURCE_TYPES) { const count = privateState[victim]!.resources[type]; if (index < count) { resources[type] = 1; break; } index -= count; }
-      move(victim, actor, resources, 'STEAL', [victim, actor]); activity('RESOURCE_STOLEN', 'Stole one resource card.'); continueEffect(); break;
+      move(victim, actor, resources, 'STEAL', [victim, actor]); activity('RESOURCE_STOLEN', 'Stole one resource card.', { subjectPlayerId: victim }); continueEffect(); break;
     }
     case 'BUILD_ROAD': phase('ACTION'); active(); road(payload.edgeId as EdgeId, false); break;
     case 'BUILD_SETTLEMENT': phase('ACTION'); active(); settle(payload.vertexId as VertexId, false); break;
@@ -187,7 +187,7 @@ export function applyCommand(previous: CanonicalState, actorPlayerId: string, co
       phase('ACTION'); active(); const give = payload.giveType as ResourceType, receive = payload.receiveType as ResourceType, count = payload.receiveCount as number;
       requireRule(RESOURCE_TYPES.includes(give) && RESOURCE_TYPES.includes(receive) && give !== receive && Number.isInteger(count) && count >= 1 && count <= 19, 'INVALID_PAYLOAD');
       const cost = emptyResources(), gain = emptyResources(); cost[give] = bankRate(p, actor, give) * count; gain[receive] = count;
-      requireRule(bank[receive] >= count, 'BANK_UNAVAILABLE'); move(actor, null, cost, 'BANK_TRADE'); move(null, actor, gain, 'BANK_TRADE'); activity('BANK_TRADE', 'Completed a bank trade.'); break;
+      requireRule(bank[receive] >= count, 'BANK_UNAVAILABLE'); move(actor, null, cost, 'BANK_TRADE'); move(null, actor, gain, 'BANK_TRADE'); activity('BANK_TRADE', 'Completed a bank trade.', { give: { ...cost }, receive: { ...gain } }); break;
     }
     case 'PROPOSE_TRADE': {
       phase('ACTION'); const target = payload.targetPlayerId as string | null, give = bundle(payload.give), receive = bundle(payload.receive);
@@ -200,18 +200,18 @@ export function applyCommand(previous: CanonicalState, actorPlayerId: string, co
       p.trades = Object.fromEntries(Object.entries(p.trades).filter(([, t]) => t.status === 'OPEN'));
       const id = random.id('trade-offer'); requireRule(!p.trades[id], 'INVALID_PAYLOAD');
       p.trades[id] = { offerId: id, proposerPlayerId: actor, targetPlayerId: target, give: { ...give }, receive: { ...receive }, revision: 0, turnNumber: p.turnNumber, phaseId: p.phaseId, status: 'OPEN', declinedBy: [] };
-      activity('TRADE_PROPOSED', 'Proposed a resource trade.'); break;
+      activity('TRADE_PROPOSED', 'Proposed a resource trade.', { subjectPlayerId: target, give: { ...give }, receive: { ...receive } }); break;
     }
     case 'ACCEPT_TRADE': {
       phase('ACTION'); const offer = checkedOffer();
       requireRule(offer.proposerPlayerId !== actor && (offer.targetPlayerId === null || offer.targetPlayerId === actor) && [offer.proposerPlayerId, actor].includes(p.activePlayerId), 'FORBIDDEN');
       requireRule(has(hand.resources, offer.receive) && has(privateState[offer.proposerPlayerId]!.resources, offer.give), 'TRADE_UNAVAILABLE');
-      move(offer.proposerPlayerId, actor, offer.give, 'PLAYER_TRADE'); move(actor, offer.proposerPlayerId, offer.receive, 'PLAYER_TRADE'); offer.status = 'ACCEPTED'; activity('TRADE_ACCEPTED', 'Completed a player trade.'); break;
+      move(offer.proposerPlayerId, actor, offer.give, 'PLAYER_TRADE'); move(actor, offer.proposerPlayerId, offer.receive, 'PLAYER_TRADE'); offer.status = 'ACCEPTED'; activity('TRADE_ACCEPTED', 'Completed a player trade.', { subjectPlayerId: offer.proposerPlayerId, give: { ...offer.receive }, receive: { ...offer.give } }); break;
     }
     case 'DECLINE_TRADE': {
       phase('ACTION'); const offer = checkedOffer();
       requireRule(actor !== offer.proposerPlayerId && (offer.targetPlayerId === null || offer.targetPlayerId === actor) && [offer.proposerPlayerId, actor].includes(p.activePlayerId), 'FORBIDDEN');
-      requireRule(!offer.declinedBy.includes(actor), 'TRADE_UNAVAILABLE'); offer.declinedBy.push(actor); offer.revision++; activity('TRADE_DECLINED', 'Declined a trade offer.'); break;
+      requireRule(!offer.declinedBy.includes(actor), 'TRADE_UNAVAILABLE'); offer.declinedBy.push(actor); offer.revision++; activity('TRADE_DECLINED', 'Declined a trade offer.', { subjectPlayerId: offer.proposerPlayerId }); break;
     }
     case 'CANCEL_TRADE': { phase('ACTION'); const offer = checkedOffer(); requireRule(offer.proposerPlayerId === actor, 'FORBIDDEN'); offer.status = 'CANCELLED'; activity('TRADE_CANCELLED', 'Cancelled a trade offer.'); break; }
     case 'BUY_DEVELOPMENT_CARD': {

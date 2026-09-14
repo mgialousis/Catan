@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -162,8 +163,13 @@ List<Offset> _hexPoints(GameSnapshot s, String id) =>
         .map((v) => vertexPoint(s.vertices[v]))
         .toList();
 
-/// Union of every tile, computed only when the terrain layer needs painting.
+/// Union of every tile, used for the drop shadow, reef shelf and coastline.
+/// Memoised: the combine is the one non-trivial geometry cost in the terrain
+/// layer, and a snapshot's board is immutable for the life of the game.
+GameSnapshot? _outlineKey;
+Path? _outlineValue;
 Path islandOutline(GameSnapshot s) {
+  if (identical(_outlineKey, s) && _outlineValue != null) return _outlineValue!;
   var union = Path();
   for (final id in s.hexes.keys) {
     union = Path.combine(
@@ -172,6 +178,8 @@ Path islandOutline(GameSnapshot s) {
       Path()..addPolygon(_hexPoints(s, id), true),
     );
   }
+  _outlineKey = s;
+  _outlineValue = union;
   return union;
 }
 
@@ -218,6 +226,19 @@ class _IslandBoardState extends State<IslandBoard>
   final transform = TransformationController();
   String? hovered;
 
+  /// Resolution multiplier the terrain is baked at. Bucketed, and capped at 2:
+  /// a 3x bake of this board would be about seventeen megabytes of texture for
+  /// a detail level the eye barely resolves through a pinch.
+  int terrainResolution = 1;
+
+  void _trackZoom() {
+    final scale = transform.value.getMaxScaleOnAxis();
+    final bucket = scale < 1.4 ? 1 : 2;
+    if (bucket != terrainResolution) {
+      setState(() => terrainResolution = bucket);
+    }
+  }
+
   /// A bounded one-shot, never a repeating pulse: the widget tests drive this
   /// board through `pumpAndSettle`, which never returns while an animation is
   /// still scheduled. Feedback therefore animates on change and then rests.
@@ -226,6 +247,12 @@ class _IslandBoardState extends State<IslandBoard>
     duration: const Duration(milliseconds: 320),
     value: 1,
   );
+
+  @override
+  void initState() {
+    super.initState();
+    transform.addListener(_trackZoom);
+  }
 
   @override
   void didUpdateWidget(covariant IslandBoard old) {
@@ -239,6 +266,7 @@ class _IslandBoardState extends State<IslandBoard>
   @override
   void dispose() {
     reveal.dispose();
+    transform.removeListener(_trackZoom);
     transform.dispose();
     super.dispose();
   }
@@ -358,7 +386,11 @@ class _IslandBoardState extends State<IslandBoard>
                             RepaintBoundary(
                               child: CustomPaint(
                                 isComplex: true,
-                                painter: _TerrainPainter(widget.snapshot),
+                                willChange: false,
+                                painter: _TerrainPainter(
+                                  widget.snapshot,
+                                  terrainResolution,
+                                ),
                               ),
                             ),
                             RepaintBoundary(
@@ -487,12 +519,18 @@ class TileBrush {
   );
 
   /// Soft contact shadow that plants a decoration on the ground.
-  void contact(Offset base, double width) => canvas.drawOval(
-    Rect.fromCenter(center: base, width: width, height: width * 0.34),
-    Paint()
-      ..color = const Color(0x33102018)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
-  );
+  ///
+  /// Shaded with a radial gradient rather than a blurred oval: at these sizes
+  /// the two are indistinguishable, and a blur costs an offscreen allocation
+  /// and composite for every one of the ~130 the board draws.
+  void contact(Offset base, double width) {
+    final rect = Rect.fromCenter(
+      center: base,
+      width: width,
+      height: width * 0.34,
+    );
+    canvas.drawOval(rect, Paint()..shader = _softShadow.createShader(rect));
+  }
 
   /// Broad low-contrast ground mottling; the reason tiles do not read as flat
   /// colour even before their decorations land.
@@ -501,15 +539,20 @@ class TileBrush {
       final dx = (rng.nextDouble() - 0.5) * halfWidth * 1.8;
       final dy = (rng.nextDouble() - 0.5) * radius * 1.8;
       if (!inside(dx, dy, 6)) continue;
+      final rect = Rect.fromCenter(
+        center: at(dx, dy),
+        width: 20 + rng.nextDouble() * 26,
+        height: 12 + rng.nextDouble() * 16,
+      );
       canvas.drawOval(
-        Rect.fromCenter(
-          center: at(dx, dy),
-          width: 20 + rng.nextDouble() * 26,
-          height: 12 + rng.nextDouble() * 16,
-        ),
+        rect,
         Paint()
-          ..color = colour.withValues(alpha: alpha)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+          ..shader = RadialGradient(
+            colors: [
+              colour.withValues(alpha: alpha),
+              colour.withValues(alpha: 0),
+            ],
+          ).createShader(rect),
       );
     }
   }
@@ -545,6 +588,10 @@ class TileBrush {
     _paint..color = colour,
   );
 }
+
+const _softShadow = RadialGradient(
+  colors: [Color(0x3d102018), Color(0x00102018)],
+);
 
 typedef Decorator = void Function(TileBrush brush);
 
@@ -1082,32 +1129,12 @@ class _IslandArtwork {
       math.Random(featureSeed(id)),
     );
     (decorators[hex['terrain']] ?? _desert)(brush);
-    // Bevel: a light edge along the top, a dark one along the bottom.
-    c.drawPath(
-      path.shift(const Offset(0, 5)),
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.3)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 7
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-    c.drawPath(
-      path.shift(const Offset(0, -6)),
-      Paint()
-        ..color = style.wall.withValues(alpha: 0.42)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 9
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-    );
-    // Inner shadow hugging every edge, which is what seats the tile in the board.
-    c.drawPath(
-      path,
-      Paint()
-        ..color = style.wall.withValues(alpha: 0.34)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 12
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
-    );
+    // Bevel and inner shadow, feathered by stacking translucent strokes rather
+    // than by blurring. Three blurs per tile is 57 offscreen allocations across
+    // the island; these passes are plain geometry and read the same at size.
+    _feather(c, path.shift(const Offset(0, 5)), Colors.white, 0.16, 8);
+    _feather(c, path.shift(const Offset(0, -6)), style.wall, 0.2, 10);
+    _feather(c, path, style.wall, 0.15, 13);
     c.restore();
 
     // Tile seam.
@@ -1125,19 +1152,44 @@ class _IslandArtwork {
     c.restore();
   }
 
+  /// Gradient-shaded contact shadow, for the same reason TileBrush.contact uses
+  /// one: the terrain layer draws twenty-seven of these and a blur each would
+  /// cost twenty-seven offscreen passes.
+  void _dropShadow(Canvas c, Rect rect, Color colour) => c.drawOval(
+    rect,
+    Paint()
+      ..shader = RadialGradient(
+        colors: [colour, colour.withValues(alpha: 0)],
+      ).createShader(rect),
+  );
+
+  /// Approximates a blurred stroke with a few concentric translucent ones. The
+  /// alpha compounds where they overlap, giving a soft inner edge for a cost
+  /// that scales with stroke count instead of with blur radius.
+  void _feather(Canvas c, Path path, Color colour, double alpha, double width) {
+    for (var pass = 0; pass < 3; pass++) {
+      c.drawPath(
+        path,
+        Paint()
+          ..color = colour.withValues(alpha: alpha)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = width * (1 - pass * 0.3),
+      );
+    }
+  }
+
   void _token(Canvas c, Offset at, int number) {
     final hot = number == 6 || number == 8;
     final ink = hot ? _tokenRed : const Color(0xff2c3f38);
     const radius = 18.0;
-    c.drawOval(
+    _dropShadow(
+      c,
       Rect.fromCenter(
         center: at + const Offset(0, 6),
         width: radius * 2.1,
         height: 11,
       ),
-      Paint()
-        ..color = const Color(0x4d101f18)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      const Color(0x4d101f18),
     );
     c.drawCircle(
       at,
@@ -1232,15 +1284,14 @@ class _IslandArtwork {
       );
       // Trading post plaque, matching the number tokens so the board reads as
       // one set of components.
-      c.drawOval(
+      _dropShadow(
+        c,
         Rect.fromCenter(
           center: point + const Offset(0, 7),
           width: 46,
           height: 14,
         ),
-        Paint()
-          ..color = const Color(0x4d0a2030)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+        const Color(0x4d0a2030),
       );
       c.drawCircle(
         point,
@@ -1539,7 +1590,12 @@ class _IslandArtwork {
 
   // -- selection feedback ---------------------------------------------------
 
-  void targets(Canvas c, Set<String> targets, String? selected, double revealValue) {
+  void targets(
+    Canvas c,
+    Set<String> targets,
+    String? selected,
+    double revealValue,
+  ) {
     final t = Curves.easeOutBack.transform(revealValue.clamp(0.0, 1.0));
     for (final id in targets) {
       final at = centreOf(s, id), chosen = id == selected;
@@ -1578,18 +1634,71 @@ class _IslandArtwork {
       }
     }
   }
-
 }
 
+/// Bakes the terrain to an image and blits it.
+///
+/// A retained layer is re-rasterised whenever the transform's scale changes, so
+/// during a pinch the whole island is redrawn every frame and the retention
+/// buys nothing. Drawing a baked image instead costs one textured quad at any
+/// scale. The bake is repeated only when the caller's resolution bucket
+/// changes, so a pinch triggers at most a couple of them.
 class _TerrainPainter extends CustomPainter {
-  _TerrainPainter(this.s);
+  _TerrainPainter(this.s, this.resolution);
   final GameSnapshot s;
+  final int resolution;
+
+  static GameSnapshot? _key;
+  static int? _keyResolution;
+  static Size? _keySize;
+  static ui.Image? _cached;
+  static ui.Image? _retired;
+
+  ui.Image _image(Size size) {
+    if (_cached != null &&
+        _keyResolution == resolution &&
+        _keySize == size &&
+        _key != null &&
+        _sameJson(_key!.board, s.board)) {
+      return _cached!;
+    }
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Offset.zero & size);
+    canvas.scale(resolution.toDouble());
+    _IslandArtwork(s).terrain(canvas, size);
+    final picture = recorder.endRecording();
+    final image = picture.toImageSync(
+      (size.width * resolution).round(),
+      (size.height * resolution).round(),
+    );
+    picture.dispose();
+    // Retire one generation behind rather than disposing inline: a picture
+    // recorded this frame may still reference the outgoing image, and anything
+    // that schedules work from paint() re-enters the frame loop.
+    _retired?.dispose();
+    _retired = _cached;
+    _cached = image;
+    _key = s;
+    _keyResolution = resolution;
+    _keySize = size;
+    return image;
+  }
 
   @override
-  void paint(Canvas canvas, Size size) => _IslandArtwork(s).terrain(canvas, size);
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final image = _image(size);
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Offset.zero & size,
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+  }
 
   @override
-  bool shouldRepaint(covariant _TerrainPainter old) => !_sameJson(old.s.board, s.board);
+  bool shouldRepaint(covariant _TerrainPainter old) =>
+      old.resolution != resolution || !_sameJson(old.s.board, s.board);
 }
 
 class _PiecesPainter extends CustomPainter {
