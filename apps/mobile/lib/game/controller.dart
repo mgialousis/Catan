@@ -33,12 +33,16 @@ class GameView {
     this.target,
     this.setupVertex,
     this.serverTime,
+    this.rollGains,
   });
   final GameSnapshot? snapshot;
   final bool connected, sending;
   final JsonMap? pending;
   final String? message, drawnCard, selection, target, setupVertex, serverTime;
   final List<String> activity;
+
+  /// Actual owner-hand changes across a single, observed dice-roll command.
+  final Map<String, int>? rollGains;
   bool get locked =>
       !connected ||
       pending != null ||
@@ -61,6 +65,8 @@ class GameView {
     bool clearSelection = false,
     String? setupVertex,
     String? serverTime,
+    Map<String, int>? rollGains,
+    bool clearRollGains = false,
   }) => GameView(
     snapshot: snapshot ?? this.snapshot,
     connected: connected ?? this.connected,
@@ -73,6 +79,7 @@ class GameView {
     target: clearSelection ? null : target ?? this.target,
     setupVertex: setupVertex ?? this.setupVertex,
     serverTime: serverTime ?? this.serverTime,
+    rollGains: clearRollGains ? null : rollGains ?? this.rollGains,
   );
 }
 
@@ -134,6 +141,18 @@ class GameController extends Notifier<GameView> {
               old == null ||
               next.version != old.version ||
               next.phaseId != old.phaseId;
+          final observedRoll =
+              old != null &&
+              next.version == old.version + 1 &&
+              next.public['turnNumber'] == old.public['turnNumber'] &&
+              old.public['hasRolled'] == false &&
+              next.public['hasRolled'] == true;
+          final gains = observedRoll
+              ? {
+                  for (final r in resourceTypes)
+                    r: next.stock[r]! - old.stock[r]!,
+                }
+              : null;
           state = state.copy(
             snapshot: next,
             serverTime: next.json['serverTime'] as String,
@@ -141,6 +160,11 @@ class GameController extends Notifier<GameView> {
             clearPending:
                 _acceptedVersion != null && next.version >= _acceptedVersion!,
             clearMessage: state.pending == null,
+            rollGains: gains,
+            clearRollGains:
+                !observedRoll &&
+                (old == null ||
+                    next.public['turnNumber'] != old.public['turnNumber']),
           );
           if (state.pending == null) _acceptedVersion = null;
         } catch (_) {

@@ -4,9 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'board.dart';
 import 'controller.dart';
 import 'countdown.dart';
+import 'hud.dart';
 import 'model.dart';
+import 'resource_icon.dart';
 
-const _sand = Color(0xfff5f2e9);
 const _teal = Color(0xff256f61);
 
 /// Phase-specific guidance. Every supported command is reachable from here.
@@ -63,15 +64,79 @@ class _GameScreenState extends ConsumerState<GameScreen>
   }
 
   GameController get _controller => ref.read(gameProvider.notifier);
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _tradeNotice;
+  void _closeTradeNotice() {
+    final notice = _tradeNotice;
+    _tradeNotice = null;
+    notice?.close();
+  }
+
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason> _showFeedback(
+    SnackBar bar,
+  ) {
+    // Keep one current notice, so a new offer is never hidden behind old feedback.
+    final messenger = ScaffoldMessenger.of(context);
+    _tradeNotice = null;
+    messenger.removeCurrentSnackBar();
+    return messenger.showSnackBar(bar);
+  }
 
   @override
   Widget build(BuildContext context) {
     final view = ref.watch(gameProvider);
     final snapshot = view.snapshot;
     ref.listen(gameProvider, (previous, next) {
+      final before = previous?.snapshot;
+      final after = next.snapshot;
+      if (next.rollGains != null &&
+          !identical(previous?.rollGains, next.rollGains)) {
+        final summary = resourceSummary(next.rollGains!);
+        _showFeedback(
+          SnackBar(
+            content: Text(
+              summary.isEmpty
+                  ? 'You collected no resources from this roll.'
+                  : 'You collected $summary.',
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      if (before != null && after != null && after.version > before.version) {
+        if (after.incomingTrades.isEmpty) _closeTradeNotice();
+        final known = before.incomingTrades.map((t) => t['offerId']).toSet();
+        final fresh = after.incomingTrades
+            .where((t) => !known.contains(t['offerId']))
+            .toList();
+        if (fresh.isNotEmpty) {
+          _closeTradeNotice();
+          _tradeNotice = _showFeedback(
+            SnackBar(
+              content: Text(
+                '${after.name(fresh.first['proposerPlayerId'] as String)} wants to trade with you.',
+              ),
+              duration: const Duration(seconds: 6),
+              action: SnackBarAction(
+                label: 'Review',
+                onPressed: () {
+                  final current = ref.read(gameProvider);
+                  if (!current.locked &&
+                      current.snapshot!.incomingTrades.isNotEmpty) {
+                    _openTrade(current.snapshot!);
+                  }
+                },
+              ),
+            ),
+          );
+          final notice = _tradeNotice;
+          notice!.closed.then((_) {
+            if (identical(_tradeNotice, notice)) _tradeNotice = null;
+          });
+        }
+      }
       final card = next.drawnCard;
       if (card != null && card != previous?.drawnCard) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        _showFeedback(
           SnackBar(
             content: Text('You drew ${words(card)}. Only you can see it.'),
             duration: const Duration(seconds: 3),
@@ -80,10 +145,62 @@ class _GameScreenState extends ConsumerState<GameScreen>
         _controller.clearFeedback();
       }
     });
-    return Scaffold(
-      backgroundColor: _sand,
-      body: SafeArea(
-        child: snapshot == null ? _waiting(view) : _table(view, snapshot),
+    return Theme(
+      data: hudTheme(context),
+      child: Scaffold(
+        backgroundColor: hudBackgroundTop,
+        body: HudBackground(
+          child: SafeArea(
+            child: snapshot == null
+                ? _waiting(view)
+                : Column(
+                    children: [
+                      if (snapshot.incomingTrades.isNotEmpty)
+                        Semantics(
+                          liveRegion: true,
+                          child: Material(
+                            color: const Color(0xfff6e3b4),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(color: Color(0xffdcc98f)),
+                                ),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.notifications_active_outlined,
+                                    color: _teal,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '${snapshot.incomingTrades.length} trade ${snapshot.incomingTrades.length == 1 ? 'request' : 'requests'} for you',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: view.locked
+                                        ? null
+                                        : () => _openTrade(snapshot),
+                                    child: const Text('View trades'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      Expanded(child: _table(view, snapshot)),
+                    ],
+                  ),
+          ),
+        ),
       ),
     );
   }
@@ -215,49 +332,131 @@ class _GameScreenState extends ConsumerState<GameScreen>
   Widget _header(GameSnapshot s) {
     final active = s.name(s.public['activePlayerId'] as String);
     final dice = s.public['dice'] as List?;
-    return Row(
-      children: [
-        const Icon(Icons.landscape_rounded, size: 32, color: _teal),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Turn ${s.public['turnNumber']} · ${s.active ? 'Your turn' : "$active's turn"}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
+    final colour =
+        playerColours[(s.players[s.public['activePlayerId']]
+            as JsonMap?)?['colour']] ??
+        hudTeal;
+    return HudPanel(
+      accent: colour,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        alignment: WrapAlignment.spaceBetween,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 180),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: colour,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: hudInk.withValues(alpha: 0.35)),
+                    boxShadow: hudShadow,
+                  ),
+                  child: const Icon(
+                    Icons.landscape_rounded,
+                    size: 19,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              Text(
-                words(s.phase),
-                style: const TextStyle(color: Color(0xff586b68), fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        if (dice != null)
-          Semantics(
-            label:
-                'Dice ${dice[0]} and ${dice[1]}, total ${(dice[0] as int) + (dice[1] as int)}',
-            child: Chip(
-              avatar: const Icon(Icons.casino_outlined, size: 18),
-              label: Text('${dice[0]} + ${dice[1]}'),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Turn ${s.public['turnNumber']} · ${s.active ? 'Your turn' : "$active's turn"}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          color: hudInk,
+                        ),
+                      ),
+                      Text(
+                        words(s.phase),
+                        style: const TextStyle(
+                          color: hudMuted,
+                          fontSize: 12,
+                          letterSpacing: 0.4,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-      ],
+          if (dice != null)
+            Semantics(
+              label:
+                  'Dice ${dice[0]} and ${dice[1]}, total ${(dice[0] as int) + (dice[1] as int)}',
+              excludeSemantics: true,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: hudSurfaceSunk,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: hudBorder),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.casino_outlined, size: 17, color: hudTeal),
+                    const SizedBox(width: 6),
+                    // Flexible, because the old Chip bounded this label for us
+                    // and a bare Row does not: at a 2x text scale the readout is
+                    // wider than a 320pt phone's panel.
+                    Flexible(
+                      child: Text(
+                        '${dice[0]} + ${dice[1]} = ${(dice[0] as int) + (dice[1] as int)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: hudInk,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _banner(String message, IconData icon) => Padding(
     padding: const EdgeInsets.only(top: 10),
-    child: Row(
-      children: [
-        Icon(icon, size: 18, color: _teal),
-        const SizedBox(width: 8),
-        Expanded(child: Text(message)),
-      ],
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: hudTeal.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: hudTeal.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: _teal),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 13, color: hudInk),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 
@@ -329,7 +528,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
             padding: const EdgeInsets.only(top: 4),
             child: Text(
               'Costs ${resourceSummary(cost)}',
-              style: const TextStyle(fontSize: 12, color: Color(0xff586b68)),
+              style: const TextStyle(fontSize: 12, color: hudMuted),
             ),
           ),
         const SizedBox(height: 10),
@@ -486,203 +685,279 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
   // ---- players, hand, activity ---------------------------------------------------
 
-  Widget _players(GameSnapshot s) => Card(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        children: [
-          for (final player in s.orderedPlayers)
-            Semantics(
-              label:
-                  '${player['nickname']}, seat ${(player['seatIndex'] as int) + 1}, '
-                  '${player['publicPoints']} public points, ${player['resourceCardCount']} resource cards, '
-                  '${player['developmentCardCount']} development cards, ${player['playedKnights']} knights played'
-                  '${player['id'] == s.public['activePlayerId'] ? ', active player' : ''}',
-              child: ExcludeSemantics(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  // The stats reflow below the name rather than overflowing when a
-                  // narrow phone is combined with an enlarged text scale.
-                  child: LayoutBuilder(
-                    builder: (context, constraints) => Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 12,
-                      runSpacing: 4,
-                      children: [
-                        ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: constraints.maxWidth,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircleAvatar(
-                                radius: 14,
-                                backgroundColor:
-                                    playerColours[player['colour']],
-                                child: Text(
-                                  '${(player['seatIndex'] as int) + 1}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xff253e38),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Flexible(
-                                child: Text(
-                                  '${player['nickname']}${player['id'] == s.playerId ? ' (you)' : ''}',
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontWeight:
-                                        player['id'] ==
-                                            s.public['activePlayerId']
-                                        ? FontWeight.w700
-                                        : FontWeight.w400,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+  Widget _players(GameSnapshot s) => HudPanel(
+    padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: HudHeading('PLAYERS'),
+        ),
+        for (final player in s.orderedPlayers)
+          Semantics(
+            label:
+                '${player['nickname']}, seat ${(player['seatIndex'] as int) + 1}, '
+                '${player['publicPoints']} public points, ${player['resourceCardCount']} resource cards, '
+                '${player['developmentCardCount']} development cards, ${player['playedKnights']} knights played'
+                '${player['id'] == s.public['activePlayerId'] ? ', active player' : ''}',
+            child: ExcludeSemantics(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                decoration: BoxDecoration(
+                  color: player['id'] == s.public['activePlayerId']
+                      ? (playerColours[player['colour']] ?? hudTeal).withValues(
+                          alpha: 0.12,
+                        )
+                      : hudSurfaceSunk.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: player['id'] == s.public['activePlayerId']
+                        ? (playerColours[player['colour']] ?? hudTeal)
+                              .withValues(alpha: 0.5)
+                        : hudBorder,
+                  ),
+                ),
+                // The stats reflow below the name rather than overflowing when a
+                // narrow phone is combined with an enlarged text scale.
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    runSpacing: 4,
+                    children: [
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: constraints.maxWidth,
                         ),
-                        Wrap(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            _pill(
-                              Icons.star_outline,
-                              '${player['publicPoints']}',
+                            Container(
+                              width: 28,
+                              height: 28,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: playerColours[player['colour']],
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: hudInk.withValues(alpha: 0.32),
+                                  width: 1.4,
+                                ),
+                                boxShadow: hudShadow,
+                              ),
+                              child: Text(
+                                '${(player['seatIndex'] as int) + 1}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: inkOn(
+                                    playerColours[player['colour']] ?? hudTeal,
+                                  ),
+                                ),
+                              ),
                             ),
-                            _pill(
-                              Icons.style_outlined,
-                              '${player['resourceCardCount']}',
-                            ),
-                            _pill(
-                              Icons.credit_card,
-                              '${player['developmentCardCount']}',
-                            ),
-                            _pill(
-                              Icons.shield_outlined,
-                              '${player['playedKnights']}',
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Text(
+                                '${player['nickname']}${player['id'] == s.playerId ? ' (you)' : ''}',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight:
+                                      player['id'] == s.public['activePlayerId']
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                      Wrap(
+                        children: [
+                          _pill(
+                            Icons.star_outline,
+                            '${player['publicPoints']}',
+                            emphasis: true,
+                          ),
+                          _pill(
+                            Icons.style_outlined,
+                            '${player['resourceCardCount']}',
+                          ),
+                          _pill(
+                            Icons.credit_card,
+                            '${player['developmentCardCount']}',
+                          ),
+                          _pill(
+                            Icons.shield_outlined,
+                            '${player['playedKnights']}',
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-          if (s.public['longestRoad']['holderPlayerId'] != null ||
-              s.public['largestArmy']['holderPlayerId'] != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 8),
-              child: Row(
-                children: [
-                  if (s.public['longestRoad']['holderPlayerId'] != null)
-                    Expanded(
-                      child: Text(
-                        'Longest road · ${s.name(s.public['longestRoad']['holderPlayerId'] as String)}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
+          ),
+        if (s.public['longestRoad']['holderPlayerId'] != null ||
+            s.public['largestArmy']['holderPlayerId'] != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, left: 4),
+            child: Row(
+              children: [
+                if (s.public['longestRoad']['holderPlayerId'] != null)
+                  Expanded(
+                    child: Text(
+                      'Longest road · ${s.name(s.public['longestRoad']['holderPlayerId'] as String)}',
+                      style: const TextStyle(fontSize: 12, color: hudMuted),
                     ),
-                  if (s.public['largestArmy']['holderPlayerId'] != null)
-                    Expanded(
-                      child: Text(
-                        'Largest army · ${s.name(s.public['largestArmy']['holderPlayerId'] as String)}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
+                  ),
+                if (s.public['largestArmy']['holderPlayerId'] != null)
+                  Expanded(
+                    child: Text(
+                      'Largest army · ${s.name(s.public['largestArmy']['holderPlayerId'] as String)}',
+                      style: const TextStyle(fontSize: 12, color: hudMuted),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _pill(IconData icon, String value) => Padding(
-    padding: const EdgeInsets.only(left: 10),
-    // Min size: inside a Wrap a default Row would expand to the whole line.
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: const Color(0xff586b68)),
-        const SizedBox(width: 3),
-        Text(value),
+          ),
       ],
     ),
   );
 
-  Widget _hand(GameView view, GameSnapshot s) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Your hand',
-            style: TextStyle(fontWeight: FontWeight.w700),
+  Widget _pill(IconData icon, String value, {bool emphasis = false}) =>
+      HudStat(icon, value, emphasis: emphasis);
+
+  Widget _hand(GameView view, GameSnapshot s) => HudPanel(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Your hand',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+            color: hudInk,
           ),
-          const SizedBox(height: 8),
-          Semantics(
-            label:
-                'Your resources: ${resourceTypes.map((r) => '${s.stock[r]} $r').join(', ')}',
-            child: ExcludeSemantics(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final resource in resourceTypes)
-                    Chip(
-                      label: Text('${words(resource)} ${s.stock[resource]}'),
-                      backgroundColor: (s.stock[resource] ?? 0) > 0
-                          ? const Color(0xffe7efe6)
-                          : null,
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Development cards (${s.cards.length})',
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          if (s.cards.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
-              child: Text('None yet.', style: TextStyle(fontSize: 12)),
-            )
-          else
-            Wrap(
+        ),
+        const SizedBox(height: 10),
+        Semantics(
+          label:
+              'Your resources: ${resourceTypes.map((r) => '${s.stock[r]} $r').join(', ')}',
+          child: ExcludeSemantics(
+            child: Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final card in s.cards)
-                  ActionChip(
-                    label: Text(words(card['type'] as String)),
-                    onPressed: view.locked || s.cardUnavailable(card) != null
-                        ? null
-                        : () => _playCard(s, card),
-                    tooltip: s.cardUnavailable(card),
+                for (final resource in resourceTypes)
+                  HudResourceCard(
+                    icon: ResourceIcon(resource, size: 26),
+                    // One string, not a name and a count: text finders in the
+                    // suite rely on the resource name being unique on screen.
+                    label: '${words(resource)} ${s.stock[resource]}',
+                    held: (s.stock[resource] ?? 0) > 0,
                   ),
               ],
             ),
-          const SizedBox(height: 8),
-          Text(
-            'Total score including hidden points: ${s.hand['totalPoints']}',
-            style: const TextStyle(fontSize: 12, color: Color(0xff586b68)),
           ),
-          if ((s.hand['discardRequired'] as int) > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: FilledButton(
-                onPressed: view.locked ? null : () => _openDiscard(s),
-                child: Text('Discard ${s.hand['discardRequired']} cards'),
-              ),
+        ),
+        const SizedBox(height: 12),
+        if (s.public['hasRolled'] == true) ...[
+          Semantics(
+            liveRegion: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'You collected this roll',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                if (view.rollGains == null)
+                  const Text(
+                    'Collection details unavailable after reconnecting.',
+                    style: TextStyle(fontSize: 12),
+                  )
+                else if (view.rollGains!.values.every((n) => n == 0))
+                  Text(
+                    (s.public['dice'] as List).cast<int>().reduce(
+                              (a, b) => a + b,
+                            ) ==
+                            7
+                        ? 'No resources — a 7 activates the robber.'
+                        : 'No resources from this roll.',
+                  )
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      for (final r in resourceTypes)
+                        if (view.rollGains![r]! > 0)
+                          Chip(
+                            avatar: ResourceIcon(r),
+                            label: Text('+${view.rollGains![r]} ${words(r)}'),
+                          ),
+                    ],
+                  ),
+              ],
             ),
+          ),
+          const SizedBox(height: 12),
         ],
-      ),
+        Text(
+          'Development cards (${s.cards.length})',
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        if (s.cards.any(
+          (card) =>
+              card['type'] != 'VICTORY_POINT' &&
+              (card['purchasedOnTurn'] as int) >=
+                  (s.public['turnNumber'] as int),
+        ))
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              'New development cards, including Road Building, can be played from your next turn. Victory points count immediately.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
+        if (s.cards.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('None yet.', style: TextStyle(fontSize: 12)),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final card in s.cards)
+                ActionChip(
+                  label: Text(words(card['type'] as String)),
+                  onPressed: view.locked || s.cardUnavailable(card) != null
+                      ? null
+                      : () => _playCard(s, card),
+                  tooltip: s.cardUnavailable(card),
+                ),
+            ],
+          ),
+        const SizedBox(height: 8),
+        Text(
+          'Total score including hidden points: ${s.hand['totalPoints']}',
+          style: const TextStyle(fontSize: 12, color: hudMuted),
+        ),
+        if ((s.hand['discardRequired'] as int) > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: FilledButton(
+              onPressed: view.locked ? null : () => _openDiscard(s),
+              child: Text('Discard ${s.hand['discardRequired']} cards'),
+            ),
+          ),
+      ],
     ),
   );
 
@@ -758,7 +1033,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
             const SizedBox(height: 10),
             Text(
               'Revealed victory point cards: ${(s.public['winnerVictoryPointCardIds'] as List).length}',
-              style: const TextStyle(fontSize: 12, color: Color(0xff586b68)),
+              style: const TextStyle(fontSize: 12, color: hudMuted),
             ),
             const SizedBox(height: 10),
             FilledButton.icon(
@@ -859,7 +1134,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        _showFeedback(
           const SnackBar(
             content: Text(
               'The invitation could not be created. Please try again.',
@@ -886,10 +1161,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
   }
 
   Future<void> _openCards(GameSnapshot s) async {
-    final playable = s.cards
-        .where((c) => s.cardUnavailable(c) == null)
-        .toList();
-    if (playable.isEmpty) return;
+    if (s.cards.isEmpty) return;
     final card = await showModalBottomSheet<JsonMap>(
       context: context,
       isScrollControlled: true,
@@ -905,10 +1177,16 @@ class _GameScreenState extends ConsumerState<GameScreen>
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              for (final card in playable)
+              for (final card in s.cards)
                 ListTile(
                   title: Text(words(card['type'] as String)),
-                  onTap: () => Navigator.pop(context, card),
+                  subtitle: s.cardUnavailable(card) == null
+                      ? null
+                      : Text(s.cardUnavailable(card)!),
+                  enabled: s.cardUnavailable(card) == null,
+                  onTap: s.cardUnavailable(card) == null
+                      ? () => Navigator.pop(context, card)
+                      : null,
                 ),
             ],
           ),
@@ -953,6 +1231,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
   }
 
   Future<void> _openTrade(GameSnapshot s) async {
+    _closeTradeNotice();
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1247,7 +1526,7 @@ class _TradeSheetState extends State<_TradeSheet> {
           giveType.isEmpty
               ? 'Bank exchange: choose one resource to give and one to receive.'
               : 'Bank rate for ${words(giveType)} is $rate:1.',
-          style: const TextStyle(fontSize: 12, color: Color(0xff586b68)),
+          style: const TextStyle(fontSize: 12, color: hudMuted),
         ),
         const SizedBox(height: 6),
         OutlinedButton(

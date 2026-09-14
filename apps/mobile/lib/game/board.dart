@@ -1,7 +1,24 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'model.dart';
+
+/// Board presentation is entirely procedural. Every tile, piece, token and wave
+/// below is drawn from paths, gradients and seeded noise, so there is no raster
+/// dependency, no licensed or traced art, nothing to download, and the board
+/// stays crisp at any zoom level.
+///
+/// The layout maths (`vertexPoint`, `centreOf`) is deliberately untouched by the
+/// visual work: depth comes from layered painting inside each tile's existing
+/// footprint rather than from a canvas transform, so hit testing, the semantics
+/// tree and the device-matrix layout tests all keep working against the same
+/// coordinates they always used.
+
+// ---------------------------------------------------------------------------
+// Design tokens
+// ---------------------------------------------------------------------------
 
 const playerColours = {
   'RED': Color(0xffbd493d),
@@ -9,14 +26,115 @@ const playerColours = {
   'WHITE': Color(0xffeee4d0),
   'ORANGE': Color(0xffdf942d),
 };
-const terrainColours = {
-  'HILLS': Color(0xffbf775e),
-  'FOREST': Color(0xff427f68),
-  'PASTURE': Color(0xff91b776),
-  'FIELDS': Color(0xffd9b758),
-  'MOUNTAINS': Color(0xff929ea1),
-  'DESERT': Color(0xffd9c596),
+
+const _oceanDeep = Color(0xff14567c);
+const _oceanMid = Color(0xff2b81a8);
+const _oceanLight = Color(0xff57aac4);
+const _shelf = Color(0xff7fd0d8);
+const _foam = Color(0xffe4f4f0);
+const _sand = Color(0xffe6d3a3);
+const _sandShade = Color(0xffc3a874);
+const _ink = Color(0xff1b3130);
+const _parchment = Color(0xfffdf6e4);
+const _parchmentEdge = Color(0xffd9c79b);
+const _tokenRed = Color(0xffa5352b);
+
+/// One terrain's complete palette: three tones for the sunlit-to-shaded gradient
+/// across the top face, the extruded side wall, and two inks for decoration.
+class TerrainStyle {
+  const TerrainStyle({
+    required this.high,
+    required this.base,
+    required this.low,
+    required this.wall,
+    required this.detail,
+    required this.accent,
+  });
+  final Color high, base, low, wall, detail, accent;
+}
+
+const terrainStyles = <String, TerrainStyle>{
+  'FOREST': TerrainStyle(
+    high: Color(0xff62a478),
+    base: Color(0xff428459),
+    low: Color(0xff2b6044),
+    wall: Color(0xff1d4030),
+    detail: Color(0xff1f6b45),
+    accent: Color(0xff8bc98f),
+  ),
+  'PASTURE': TerrainStyle(
+    high: Color(0xffa8d37f),
+    base: Color(0xff80b560),
+    low: Color(0xff5d9149),
+    wall: Color(0xff3d6935),
+    detail: Color(0xff4f8340),
+    accent: Color(0xfff4f8ea),
+  ),
+  'FIELDS': TerrainStyle(
+    high: Color(0xfff1ce71),
+    base: Color(0xffdcae4a),
+    low: Color(0xffbb8b31),
+    wall: Color(0xff8a6321),
+    detail: Color(0xffa9762a),
+    accent: Color(0xfffbe9ab),
+  ),
+  'HILLS': TerrainStyle(
+    high: Color(0xffdd9268),
+    base: Color(0xffc0714c),
+    low: Color(0xff965239),
+    wall: Color(0xff6b3928),
+    detail: Color(0xff8a4a33),
+    accent: Color(0xffedbe97),
+  ),
+  'MOUNTAINS': TerrainStyle(
+    high: Color(0xffbcc6cc),
+    base: Color(0xff8e9aa2),
+    low: Color(0xff69747d),
+    wall: Color(0xff49535b),
+    detail: Color(0xff5b666e),
+    accent: Color(0xfff4f9fc),
+  ),
+  'DESERT': TerrainStyle(
+    high: Color(0xfff4e5bc),
+    base: Color(0xffe2cd97),
+    low: Color(0xffc4a970),
+    wall: Color(0xff998151),
+    detail: Color(0xffb89a63),
+    accent: Color(0xfffaf1d9),
+  ),
 };
+
+/// Retained for callers that only need a single representative tone per terrain.
+final terrainColours = {
+  for (final e in terrainStyles.entries) e.key: e.value.base,
+};
+
+Color _shift(Color colour, double amount) {
+  final hsl = HSLColor.fromColor(colour);
+  return hsl.withLightness((hsl.lightness + amount).clamp(0.0, 1.0)).toColor();
+}
+
+Color lighten(Color colour, [double amount = 0.12]) => _shift(colour, amount);
+Color darken(Color colour, [double amount = 0.12]) => _shift(colour, -amount);
+
+/// Readable text colour for a label sitting on an arbitrary player colour.
+Color inkOn(Color colour) =>
+    colour.computeLuminance() > 0.45 ? const Color(0xff23342c) : Colors.white;
+
+/// Stable per-feature seed so procedural decoration never shimmers between
+/// repaints. `String.hashCode` is not guaranteed stable, so hash explicitly.
+int featureSeed(String id) {
+  var hash = 0x811c9dc5;
+  for (final unit in id.codeUnits) {
+    hash = ((hash ^ unit) * 0x01000193) & 0x3fffffff;
+  }
+  return hash;
+}
+
+// ---------------------------------------------------------------------------
+// Layout (unchanged)
+// ---------------------------------------------------------------------------
+
 const boardSize = Size(720, 650);
 Offset vertexPoint(Map vertex) => Offset(
   360 + (vertex['x'] as num) * 28 * math.sqrt(3),
@@ -40,6 +158,35 @@ String locationLabel(GameSnapshot s, String id) {
   return '${id.startsWith('v-') ? 'Junction' : 'Road'} ${id.substring(2)} · ${refs.map((h) => '${words(s.hexes[h]['terrain'] as String)} ${s.hexes[h]['number'] ?? ''}').join(' / ')}';
 }
 
+List<Offset> _hexPoints(GameSnapshot s, String id) =>
+    (s.hexes[id]['vertexIds'] as List)
+        .map((v) => vertexPoint(s.vertices[v]))
+        .toList();
+
+/// Union of every tile, used for the drop shadow, reef shelf and coastline. It
+/// is memoised because the combine is the one non-trivial geometry cost here and
+/// the snapshot is immutable.
+GameSnapshot? _outlineKey;
+Path? _outlineValue;
+Path islandOutline(GameSnapshot s) {
+  if (identical(_outlineKey, s) && _outlineValue != null) return _outlineValue!;
+  var union = Path();
+  for (final id in s.hexes.keys) {
+    union = Path.combine(
+      PathOperation.union,
+      union,
+      Path()..addPolygon(_hexPoints(s, id), true),
+    );
+  }
+  _outlineKey = s;
+  _outlineValue = union;
+  return union;
+}
+
+// ---------------------------------------------------------------------------
+// Widget
+// ---------------------------------------------------------------------------
+
 class IslandBoard extends StatefulWidget {
   const IslandBoard({
     super.key,
@@ -56,12 +203,49 @@ class IslandBoard extends StatefulWidget {
   State<IslandBoard> createState() => _IslandBoardState();
 }
 
-class _IslandBoardState extends State<IslandBoard> {
+class _IslandBoardState extends State<IslandBoard>
+    with SingleTickerProviderStateMixin {
   final transform = TransformationController();
+  String? hovered;
+
+  /// A bounded one-shot, never a repeating pulse: the widget tests drive this
+  /// board through `pumpAndSettle`, which never returns while an animation is
+  /// still scheduled. Feedback therefore animates on change and then rests.
+  late final AnimationController reveal = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+    value: 1,
+  );
+
+  @override
+  void didUpdateWidget(covariant IslandBoard old) {
+    super.didUpdateWidget(old);
+    if (!setEquals(old.targets, widget.targets) ||
+        old.selected != widget.selected) {
+      reveal.forward(from: 0);
+    }
+  }
+
   @override
   void dispose() {
+    reveal.dispose();
     transform.dispose();
     super.dispose();
+  }
+
+  void _hover(Offset at) {
+    if (widget.snapshot.hexes.isEmpty) return;
+    final near = widget.snapshot.hexes.keys.reduce(
+      (a, b) =>
+          (centreOf(widget.snapshot, a) - at).distance <
+              (centreOf(widget.snapshot, b) - at).distance
+          ? a
+          : b,
+    );
+    final hit = (centreOf(widget.snapshot, near) - at).distance < 52
+        ? near
+        : null;
+    if (hit != hovered) setState(() => hovered = hit);
   }
 
   @override
@@ -149,13 +333,21 @@ class _IslandBoardState extends State<IslandBoard> {
                         );
                       }
                     },
-                    child: CustomPaint(
-                      size: boardSize,
-                      painter: IslandPainter(
-                        widget.snapshot,
-                        widget.targets,
-                        widget.selected,
-                        widget.onTarget,
+                    child: MouseRegion(
+                      onHover: (event) => _hover(event.localPosition),
+                      onExit: (_) {
+                        if (hovered != null) setState(() => hovered = null);
+                      },
+                      child: CustomPaint(
+                        size: boardSize,
+                        painter: IslandPainter(
+                          widget.snapshot,
+                          widget.targets,
+                          widget.selected,
+                          widget.onTarget,
+                          hovered: hovered,
+                          reveal: reveal,
+                        ),
                       ),
                     ),
                   ),
@@ -183,13 +375,438 @@ class _IslandBoardState extends State<IslandBoard> {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Tile decoration toolkit
+// ---------------------------------------------------------------------------
+
+/// The drawing surface handed to each terrain decorator. It carries the tile's
+/// footprint, palette and seeded RNG so decorators stay short and declarative,
+/// and it is the reason adding a terrain means adding one palette plus one
+/// function rather than editing the painter.
+class TileBrush {
+  TileBrush(
+    this.canvas,
+    this.centre,
+    this.halfWidth,
+    this.radius,
+    this.style,
+    this.rng,
+  );
+  final Canvas canvas;
+  final Offset centre;
+
+  /// Half width and half height of the hexagon, measured from its own vertices.
+  final double halfWidth, radius;
+  final TerrainStyle style;
+  final math.Random rng;
+
+  final _paint = Paint();
+
+  Offset at(double dx, double dy) => centre + Offset(dx, dy);
+  double vary(double span) => (rng.nextDouble() - 0.5) * span;
+
+  bool inside(double dx, double dy, double margin) {
+    final w = halfWidth - margin, r = radius - margin;
+    if (w <= 0 || r <= 0 || dx.abs() > w) return false;
+    return dy.abs() <= r - (dx.abs() / w) * (r / 2);
+  }
+
+  /// Rejection-sampled points inside the hexagon, avoiding the number token.
+  List<Offset> scatter(int count, {Offset? avoid, double avoidRadius = 34}) {
+    final points = <Offset>[];
+    for (var tries = 0; tries < count * 40 && points.length < count; tries++) {
+      final dx = (rng.nextDouble() - 0.5) * halfWidth * 2;
+      final dy = (rng.nextDouble() - 0.5) * radius * 2;
+      if (!inside(dx, dy, 13)) continue;
+      final p = at(dx, dy);
+      if (avoid != null && (p - avoid).distance < avoidRadius) continue;
+      if (points.any((q) => (q - p).distance < 19)) continue;
+      points.add(p);
+    }
+    return points;
+  }
+
+  void fill(Path path, Color colour) =>
+      canvas.drawPath(path, _paint..color = colour);
+
+  void stroke(Path path, Color colour, double width) => canvas.drawPath(
+    path,
+    Paint()
+      ..color = colour
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round,
+  );
+
+  void line(Offset a, Offset b, Color colour, double width) => canvas.drawLine(
+    a,
+    b,
+    Paint()
+      ..color = colour
+      ..strokeWidth = width
+      ..strokeCap = StrokeCap.round,
+  );
+
+  void oval(Offset at, double w, double h, Color colour) => canvas.drawOval(
+    Rect.fromCenter(center: at, width: w, height: h),
+    _paint..color = colour,
+  );
+
+  /// Soft contact shadow that plants a decoration on the ground.
+  void contact(Offset base, double width) => canvas.drawOval(
+    Rect.fromCenter(center: base, width: width, height: width * 0.34),
+    Paint()
+      ..color = const Color(0x33102018)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+  );
+
+  /// Broad low-contrast ground mottling; the reason tiles do not read as flat
+  /// colour even before their decorations land.
+  void mottle(int count, Color colour, {double alpha = 0.16}) {
+    for (var i = 0; i < count; i++) {
+      final dx = (rng.nextDouble() - 0.5) * halfWidth * 1.8;
+      final dy = (rng.nextDouble() - 0.5) * radius * 1.8;
+      if (!inside(dx, dy, 6)) continue;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: at(dx, dy),
+          width: 20 + rng.nextDouble() * 26,
+          height: 12 + rng.nextDouble() * 16,
+        ),
+        Paint()
+          ..color = colour.withValues(alpha: alpha)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+      );
+    }
+  }
+
+  /// A two-tone cone: the single most useful primitive here, because splitting
+  /// any silhouette into a lit and a shaded half is what makes flat vector
+  /// shapes read as solid objects.
+  void cone(Offset base, double width, double height, Color lit, Color shade) {
+    final apex = base - Offset(0, height);
+    fill(
+      Path()
+        ..moveTo(apex.dx, apex.dy)
+        ..lineTo(base.dx - width / 2, base.dy)
+        ..lineTo(base.dx, base.dy)
+        ..close(),
+      lit,
+    );
+    fill(
+      Path()
+        ..moveTo(apex.dx, apex.dy)
+        ..lineTo(base.dx, base.dy)
+        ..lineTo(base.dx + width / 2, base.dy)
+        ..close(),
+      shade,
+    );
+  }
+
+  void capsule(Offset at, double w, double h, Color colour) => canvas.drawRRect(
+    RRect.fromRectAndRadius(
+      Rect.fromCenter(center: at, width: w, height: h),
+      Radius.circular(w / 2),
+    ),
+    _paint..color = colour,
+  );
+}
+
+typedef Decorator = void Function(TileBrush brush);
+
+/// One entry per terrain; the painter never branches on terrain type itself.
+const decorators = <String, Decorator>{
+  'FOREST': _forest,
+  'PASTURE': _pasture,
+  'FIELDS': _fields,
+  'HILLS': _hills,
+  'MOUNTAINS': _mountains,
+  'DESERT': _desert,
+};
+
+void _forest(TileBrush b) {
+  b.mottle(4, b.style.low, alpha: 0.3);
+  b.mottle(2, b.style.high, alpha: 0.18);
+  final trees = b.scatter(8, avoid: b.at(0, 12));
+  trees.sort((p, q) => p.dy.compareTo(q.dy));
+  for (final p in trees) {
+    final height = 20 + b.rng.nextDouble() * 11;
+    final width = height * 0.56;
+    b.contact(p + const Offset(1, 1), width * 1.15);
+    b.capsule(
+      p - Offset(0, height * 0.1),
+      3.4,
+      height * 0.3,
+      const Color(0xff4a3524),
+    );
+    for (var tier = 2; tier >= 0; tier--) {
+      final base = p - Offset(0, height * (0.16 + tier * 0.24));
+      final tierWidth = width * (1 - tier * 0.2);
+      b.cone(
+        base,
+        tierWidth,
+        height * 0.42,
+        lighten(b.style.detail, 0.15),
+        darken(b.style.detail, 0.04),
+      );
+    }
+  }
+}
+
+void _pasture(TileBrush b) {
+  b.mottle(4, b.style.high, alpha: 0.26);
+  b.mottle(3, b.style.low, alpha: 0.22);
+  // Rolling crests: a lit arc with its own shadow beneath reads as a hillside.
+  for (var i = 0; i < 3; i++) {
+    final y = -b.radius * 0.45 + i * b.radius * 0.4 + b.vary(8);
+    final w = b.halfWidth * (1.25 - i * 0.16);
+    final crest = Path()
+      ..moveTo(b.centre.dx - w / 2, b.centre.dy + y)
+      ..quadraticBezierTo(
+        b.centre.dx + b.vary(16),
+        b.centre.dy + y - 15,
+        b.centre.dx + w / 2,
+        b.centre.dy + y,
+      );
+    b.stroke(crest, b.style.high.withValues(alpha: 0.5), 5);
+    b.stroke(
+      crest.shift(const Offset(0, 4)),
+      b.style.low.withValues(alpha: 0.32),
+      3,
+    );
+  }
+  for (final p in b.scatter(9, avoid: b.at(0, 12), avoidRadius: 32)) {
+    if (b.rng.nextDouble() < 0.26) {
+      // A grazing animal: the cheapest possible "this board is alive" detail.
+      b.contact(p + const Offset(0, 5), 16);
+      b.oval(p, 15, 10, b.style.accent);
+      b.oval(p + const Offset(-7, -3), 7, 6, darken(b.style.accent, 0.42));
+      b.line(
+        p + const Offset(-3, 4),
+        p + const Offset(-3, 8),
+        darken(b.style.accent, 0.42),
+        2,
+      );
+      b.line(
+        p + const Offset(4, 4),
+        p + const Offset(4, 8),
+        darken(b.style.accent, 0.42),
+        2,
+      );
+    } else {
+      for (var i = -1; i <= 1; i++) {
+        b.line(
+          p + Offset(i * 3.0, 4),
+          p + Offset(i * 4.5, -5 - i.abs() * 2),
+          b.style.detail,
+          2,
+        );
+      }
+    }
+  }
+}
+
+void _fields(TileBrush b) {
+  b.mottle(4, b.style.low, alpha: 0.22);
+  // Crop rows bow slightly and taper towards the top of the tile, which is
+  // enough perspective cue to tilt the field away from the viewer.
+  for (var i = 0; i < 11; i++) {
+    final t = i / 10;
+    final y = -b.radius * 0.72 + t * b.radius * 1.44;
+    final w = b.halfWidth * 2 * (0.34 + 0.62 * t) * 0.82;
+    final row = Path()
+      ..moveTo(b.centre.dx - w / 2, b.centre.dy + y)
+      ..quadraticBezierTo(
+        b.centre.dx,
+        b.centre.dy + y + 4,
+        b.centre.dx + w / 2,
+        b.centre.dy + y,
+      );
+    b.stroke(row, i.isEven ? b.style.detail : b.style.accent, 3.4);
+    b.stroke(
+      row.shift(const Offset(0, 2.4)),
+      b.style.low.withValues(alpha: 0.4),
+      1.6,
+    );
+  }
+  for (final p in b.scatter(3, avoid: b.at(0, 12), avoidRadius: 40)) {
+    b.contact(p + const Offset(0, 7), 15);
+    for (var i = -1; i <= 1; i++) {
+      b.line(
+        p + Offset(i * 4.0, 8),
+        p + Offset(i * 6.0, -8),
+        b.style.detail,
+        3,
+      );
+    }
+    b.oval(p + const Offset(0, -9), 12, 7, b.style.accent);
+  }
+}
+
+void _hills(TileBrush b) {
+  b.mottle(4, b.style.low, alpha: 0.28);
+  // Stacked clay terraces, drawn back to front with a lit lip on each.
+  for (var i = 0; i < 4; i++) {
+    final y = -b.radius * 0.5 + i * b.radius * 0.34;
+    final w = b.halfWidth * (1.2 - (i - 1.5).abs() * 0.2);
+    final bank = Path()
+      ..moveTo(b.centre.dx - w / 2, b.centre.dy + y + 12)
+      ..quadraticBezierTo(
+        b.centre.dx + b.vary(20),
+        b.centre.dy + y - 16,
+        b.centre.dx + w / 2,
+        b.centre.dy + y + 12,
+      )
+      ..close();
+    b.fill(bank, i.isEven ? b.style.detail : darken(b.style.detail, 0.06));
+    b.stroke(
+      Path()
+        ..moveTo(b.centre.dx - w / 2, b.centre.dy + y + 12)
+        ..quadraticBezierTo(
+          b.centre.dx + b.vary(6),
+          b.centre.dy + y - 16,
+          b.centre.dx + w / 2,
+          b.centre.dy + y + 12,
+        ),
+      b.style.accent.withValues(alpha: 0.55),
+      2.6,
+    );
+  }
+  for (final p in b.scatter(5, avoid: b.at(0, 12), avoidRadius: 32)) {
+    final size = 5 + b.rng.nextDouble() * 4;
+    b.contact(p + Offset(0, size * 0.6), size * 2.4);
+    b.canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(center: p, width: size * 2.2, height: size * 1.5),
+        const Radius.circular(3),
+      ),
+      Paint()..color = darken(b.style.detail, 0.12),
+    );
+    b.canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: p - Offset(0, size * 0.35),
+          width: size * 1.9,
+          height: size * 0.7,
+        ),
+        const Radius.circular(3),
+      ),
+      Paint()..color = b.style.accent.withValues(alpha: 0.6),
+    );
+  }
+}
+
+void _mountains(TileBrush b) {
+  b.mottle(4, b.style.low, alpha: 0.3);
+  final peaks = <(Offset, double)>[
+    (b.at(-22 + b.vary(6), 6), 42),
+    (b.at(4 + b.vary(6), 14), 56),
+    (b.at(26 + b.vary(6), 4), 36),
+  ];
+  peaks.sort((a, c) => a.$2.compareTo(c.$2));
+  for (final (base, height) in peaks) {
+    final width = height * 1.05;
+    b.contact(base + const Offset(0, 2), width * 0.9);
+    b.cone(base, width, height, b.style.high, b.style.detail);
+    // Snow cap: clip a small cone at the apex so it follows the same silhouette.
+    final capHeight = height * 0.3;
+    final apex = base - Offset(0, height);
+    b.fill(
+      Path()
+        ..moveTo(apex.dx, apex.dy)
+        ..lineTo(apex.dx - width * 0.15, apex.dy + capHeight)
+        ..lineTo(apex.dx - width * 0.05, apex.dy + capHeight * 0.72)
+        ..lineTo(apex.dx + width * 0.07, apex.dy + capHeight)
+        ..lineTo(apex.dx + width * 0.15, apex.dy + capHeight * 0.78)
+        ..close(),
+      b.style.accent,
+    );
+  }
+  for (final p in b.scatter(4, avoid: b.at(0, 12), avoidRadius: 30)) {
+    b.oval(p, 6, 4, darken(b.style.detail, 0.08));
+  }
+}
+
+void _desert(TileBrush b) {
+  b.mottle(5, b.style.low, alpha: 0.3);
+  for (var i = 0; i < 4; i++) {
+    final y = -b.radius * 0.55 + i * b.radius * 0.36 + b.vary(6);
+    final w = b.halfWidth * (1.3 - (i - 1.5).abs() * 0.22);
+    final dune = Path()
+      ..moveTo(b.centre.dx - w / 2, b.centre.dy + y)
+      ..cubicTo(
+        b.centre.dx - w * 0.2,
+        b.centre.dy + y - 13,
+        b.centre.dx + w * 0.2,
+        b.centre.dy + y + 9,
+        b.centre.dx + w / 2,
+        b.centre.dy + y - 4,
+      );
+    b.stroke(
+      dune.shift(const Offset(0, 4)),
+      b.style.low.withValues(alpha: 0.75),
+      5.5,
+    );
+    b.stroke(dune, b.style.high, 3.6);
+    b.stroke(
+      dune.shift(const Offset(0, -1.6)),
+      b.style.accent.withValues(alpha: 0.9),
+      1.6,
+    );
+  }
+  for (final p in b.scatter(6, avoid: b.at(0, 12), avoidRadius: 32)) {
+    if (b.rng.nextDouble() < 0.3) {
+      b.contact(p + const Offset(0, 10), 16);
+      b.capsule(p, 7, 22, const Color(0xff6f9158));
+      b.capsule(p + const Offset(-6, -1), 5, 12, const Color(0xff6f9158));
+      b.capsule(p + const Offset(6, 3), 5, 10, const Color(0xff6f9158));
+      b.capsule(
+        p + const Offset(-1.4, 0),
+        2,
+        18,
+        const Color(0xff88ad6c).withValues(alpha: 0.7),
+      );
+    } else {
+      b.contact(p + const Offset(0, 2), 10);
+      b.oval(p, 7, 5, b.style.detail);
+      b.oval(
+        p - const Offset(0, 1),
+        5,
+        2.6,
+        b.style.accent.withValues(alpha: 0.7),
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Painter
+// ---------------------------------------------------------------------------
+
 /// Original vector presentation; no licensed board art or raster dependency.
 class IslandPainter extends CustomPainter {
-  IslandPainter(this.s, this.targets, this.selected, this.onTarget);
+  IslandPainter(
+    this.s,
+    this.targets,
+    this.selected,
+    this.onTarget, {
+    this.hovered,
+    this.reveal,
+  }) : revealValue = reveal is Animation<double> ? reveal.value : 1.0,
+       super(repaint: reveal);
   final GameSnapshot s;
   final Set<String> targets;
   final String? selected;
   final ValueChanged<String> onTarget;
+  final String? hovered;
+  final Listenable? reveal;
+  final double revealValue;
+
+  /// Height of the extruded tile wall. Everything else that needs to look like
+  /// it is standing on the island is offset against this one number.
+  static const depth = 13.0;
+
   void line(Canvas c, Offset a, Offset b, Color colour, double width) =>
       c.drawLine(
         a,
@@ -199,6 +816,7 @@ class IslandPainter extends CustomPainter {
           ..strokeWidth = width
           ..strokeCap = StrokeCap.round,
       );
+
   void text(
     Canvas c,
     String value,
@@ -206,6 +824,7 @@ class IslandPainter extends CustomPainter {
     double size, {
     Color colour = const Color(0xff183d3b),
     FontWeight weight = FontWeight.w700,
+    Color? halo,
   }) {
     final p = TextPainter(
       text: TextSpan(
@@ -215,6 +834,7 @@ class IslandPainter extends CustomPainter {
           color: colour,
           fontWeight: weight,
           fontFamily: 'sans-serif',
+          shadows: halo == null ? null : [Shadow(color: halo, blurRadius: 3.5)],
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -222,238 +842,743 @@ class IslandPainter extends CustomPainter {
     p.paint(c, centre - Offset(p.width / 2, p.height / 2));
   }
 
+  /// The board is hundreds of gradient and blur operations, and all but the
+  /// selection feedback is fixed for a given snapshot. Recording that once and
+  /// replaying it keeps hover and target changes to a handful of draw calls.
+  static GameSnapshot? _layerKey;
+  static Size? _layerSize;
+  static ui.Picture? _layerValue;
+
+  ui.Picture _layer(Size size) {
+    if (identical(_layerKey, s) && _layerSize == size && _layerValue != null) {
+      return _layerValue!;
+    }
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Offset.zero & size);
+    _ocean(canvas, size);
+    _coast(canvas);
+    _tiles(canvas);
+    _ports(canvas);
+    _roads(canvas);
+    _buildings(canvas);
+    _robber(canvas);
+    _layerValue?.dispose();
+    _layerValue = recorder.endRecording();
+    _layerKey = s;
+    _layerSize = size;
+    return _layerValue!;
+  }
+
   @override
   void paint(Canvas c, Size size) {
-    c.drawRect(Offset.zero & size, Paint()..color = const Color(0xffd5e9e4));
-    for (var y = 28.0; y < size.height; y += 34) {
-      for (var x = 18.0; x < size.width; x += 54) {
-        final p = Path()
-          ..moveTo(x, y)
-          ..quadraticBezierTo(x + 8, y + 5, x + 16, y);
-        c.drawPath(
-          p,
-          Paint()
-            ..color = const Color(0xffbdd9d3)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2,
-        );
-      }
-    }
-    for (final entry in s.hexes.entries) {
-      final hex = entry.value as Map,
-          points = (hex['vertexIds'] as List)
-              .map((v) => vertexPoint(s.vertices[v]))
-              .toList();
-      final path = Path()..addPolygon(points, true);
-      c.drawShadow(path, const Color(0xff315f55), 3, false);
-      c.drawPath(path, Paint()..color = terrainColours[hex['terrain']]!);
-      c.drawPath(
-        path,
-        Paint()
-          ..color = const Color(0xfff8f1de)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 5,
-      );
-      final centre = centreOf(s, entry.key);
-      _terrain(c, hex['terrain'] as String, centre + const Offset(0, -24));
-      if (hex['number'] != null) {
-        final at = centre + const Offset(0, 19),
-            red = [6, 8].contains(hex['number']);
-        c.drawCircle(at, 23, Paint()..color = const Color(0xfffff8e9));
-        text(
-          c,
-          '${hex['number']}',
-          at - const Offset(0, 3),
-          28,
-          colour: red ? const Color(0xffa83d33) : const Color(0xff253e38),
-        );
-        final count = 6 - (7 - (hex['number'] as int)).abs();
-        for (var i = 0; i < count; i++) {
-          c.drawCircle(
-            at + Offset((i - (count - 1) / 2) * 5, 15),
-            1.8,
-            Paint()
-              ..color = red ? const Color(0xffa83d33) : const Color(0xff253e38),
+    c.drawPicture(_layer(size));
+    _hover(c);
+    _targets(c);
+  }
+
+  /// Hover sits outside the cached layer so pointing at a tile never re-records
+  /// the board.
+  void _hover(Canvas c) {
+    if (hovered == null || !s.hexes.containsKey(hovered)) return;
+    final path = Path()..addPolygon(_hexPoints(s, hovered!), true);
+    c.save();
+    c.clipPath(path);
+    c.drawPath(path, Paint()..color = Colors.white.withValues(alpha: 0.12));
+    c.drawPath(
+      path,
+      Paint()
+        ..color = _foam.withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 7,
+    );
+    c.restore();
+  }
+
+  // -- water ----------------------------------------------------------------
+
+  void _ocean(Canvas c, Size size) {
+    final bounds = Offset.zero & size;
+    c.drawRect(
+      bounds,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [_oceanDeep, _oceanMid, Color(0xff1f6d95)],
+          stops: [0, 0.55, 1],
+        ).createShader(bounds),
+    );
+    // A broad light pool under the island lifts it off the deep water.
+    c.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.width * 0.42,
+      Paint()
+        ..shader =
+            RadialGradient(
+              colors: [
+                _oceanLight.withValues(alpha: 0.55),
+                _oceanLight.withValues(alpha: 0),
+              ],
+            ).createShader(
+              Rect.fromCircle(
+                center: Offset(size.width / 2, size.height / 2),
+                radius: size.width * 0.42,
+              ),
+            ),
+    );
+    // Three wave bands at different scales and opacities; seeded once so the
+    // sea is identical on every repaint.
+    final rng = math.Random(0x5eab);
+    for (final band in [
+      (34.0, 62.0, 2.4, 0.20, 15.0),
+      (47.0, 78.0, 1.8, 0.13, 22.0),
+      (29.0, 96.0, 1.3, 0.09, 9.0),
+    ]) {
+      final (stepY, stepX, width, alpha, span) = band;
+      final paint = Paint()
+        ..color = _foam.withValues(alpha: alpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..strokeCap = StrokeCap.round;
+      for (var y = 12.0; y < size.height; y += stepY) {
+        for (var x = 8.0; x < size.width; x += stepX) {
+          final ox = x + rng.nextDouble() * stepX * 0.75,
+              oy = y + rng.nextDouble() * stepY * 0.8;
+          c.drawPath(
+            Path()
+              ..moveTo(ox, oy)
+              ..quadraticBezierTo(ox + span / 2, oy + 6, ox + span, oy)
+              ..quadraticBezierTo(ox + span * 1.5, oy - 6, ox + span * 2, oy),
+            paint,
           );
         }
       }
     }
+  }
+
+  void _coast(Canvas c) {
+    final outline = islandOutline(s);
+    // Cast shadow on the water, then the reef shelf, then wet sand, then foam.
+    c.drawPath(
+      outline.shift(const Offset(0, 14)),
+      Paint()
+        ..color = const Color(0x59062a3c)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
+    );
+    for (final ring in [
+      (42.0, _shelf.withValues(alpha: 0.32), 16.0),
+      (26.0, _shelf.withValues(alpha: 0.5), 8.0),
+      (14.0, _sandShade, 2.0),
+      (9.0, _sand, 0.0),
+    ]) {
+      final (width, colour, blur) = ring;
+      c.drawPath(
+        outline,
+        Paint()
+          ..color = colour
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = width
+          ..strokeJoin = StrokeJoin.round
+          ..maskFilter = blur == 0
+              ? null
+              : MaskFilter.blur(BlurStyle.normal, blur),
+      );
+    }
+    // Foam breaking on the shore, drawn only outside the land so it reads as
+    // surf rather than as an outline.
+    c.save();
+    c.clipPath(outline);
+    c.drawPath(
+      outline,
+      Paint()
+        ..color = _foam.withValues(alpha: 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 7,
+    );
+    c.restore();
+
+    // The island's own cliff. Only the seaward edges of the slab are ever
+    // visible, which is exactly the impression wanted: land standing above water.
+    final cliff = outline.shift(const Offset(0, depth));
+    c.drawPath(
+      cliff,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [Color(0xff8d6f47), Color(0xff5b452b)],
+        ).createShader(cliff.getBounds()),
+    );
+    c.drawPath(
+      cliff,
+      Paint()
+        ..color = const Color(0xff42301d)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+  }
+
+  // -- terrain --------------------------------------------------------------
+
+  void _tiles(Canvas c) {
+    // Back to front, so the extruded walls of nearer tiles overlap farther ones.
+    final ids = s.hexes.keys.toList()
+      ..sort((a, b) => centreOf(s, a).dy.compareTo(centreOf(s, b).dy));
+    for (final id in ids) {
+      _tile(c, id);
+    }
+  }
+
+  void _tile(Canvas c, String id) {
+    final hex = s.hexes[id] as Map;
+    final style = terrainStyles[hex['terrain']] ?? terrainStyles['DESERT']!;
+    final points = _hexPoints(s, id);
+    final path = Path()..addPolygon(points, true);
+    final centre = centreOf(s, id);
+    final bounds = path.getBounds();
+
+    // Side wall: the top face stays exactly on the hit-tested polygon and the
+    // thickness is drawn beneath it, so depth costs no geometry accuracy.
+    final wall = path.shift(const Offset(0, depth));
+    final wallBounds = wall.getBounds();
+    c.drawPath(
+      wall,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(const Color(0xff9a7a4f), style.wall, 0.4)!,
+            const Color(0xff533f27),
+          ],
+        ).createShader(wallBounds),
+    );
+    c.drawPath(
+      wall,
+      Paint()
+        ..color = const Color(0xff3c2c1a)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
+
+    c.save();
+
+    c.drawPath(
+      path,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [style.high, style.base, style.low],
+          stops: const [0, 0.52, 1],
+        ).createShader(bounds),
+    );
+
+    c.save();
+    c.clipPath(path);
+    // Seeded decoration, clipped so nothing crosses a tile edge.
+    final brush = TileBrush(
+      c,
+      centre,
+      (bounds.width / 2),
+      (bounds.height / 2),
+      style,
+      math.Random(featureSeed(id)),
+    );
+    (decorators[hex['terrain']] ?? _desert)(brush);
+    // Bevel: a light edge along the top, a dark one along the bottom.
+    c.drawPath(
+      path.shift(const Offset(0, 5)),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.3)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 7
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+    c.drawPath(
+      path.shift(const Offset(0, -6)),
+      Paint()
+        ..color = style.wall.withValues(alpha: 0.42)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 9
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    // Inner shadow hugging every edge, which is what seats the tile in the board.
+    c.drawPath(
+      path,
+      Paint()
+        ..color = style.wall.withValues(alpha: 0.34)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 12
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
+    );
+    c.restore();
+
+    // Tile seam.
+    c.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0x4d0f2018)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2,
+    );
+
+    if (hex['number'] != null) {
+      _token(c, centre + const Offset(0, 12), hex['number'] as int);
+    }
+    c.restore();
+  }
+
+  void _token(Canvas c, Offset at, int number) {
+    final hot = number == 6 || number == 8;
+    final ink = hot ? _tokenRed : const Color(0xff2c3f38);
+    const radius = 18.0;
+    c.drawOval(
+      Rect.fromCenter(
+        center: at + const Offset(0, 6),
+        width: radius * 2.1,
+        height: 11,
+      ),
+      Paint()
+        ..color = const Color(0x4d101f18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    c.drawCircle(
+      at,
+      radius,
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(-0.35, -0.45),
+          colors: [Color(0xfffffdf5), _parchment, Color(0xffe9d9b4)],
+          stops: [0, 0.55, 1],
+        ).createShader(Rect.fromCircle(center: at, radius: radius)),
+    );
+    c.drawCircle(
+      at,
+      radius - 0.8,
+      Paint()
+        ..color = _parchmentEdge
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6,
+    );
+    c.drawCircle(
+      at,
+      radius - 3.4,
+      Paint()
+        ..color = ink.withValues(alpha: hot ? 0.5 : 0.22)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = hot ? 1.8 : 1,
+    );
+    text(
+      c,
+      '$number',
+      at - const Offset(0, 3),
+      hot ? 21 : 19,
+      colour: ink,
+      weight: hot ? FontWeight.w900 : FontWeight.w800,
+    );
+    final pips = 6 - (7 - number).abs();
+    for (var i = 0; i < pips; i++) {
+      c.drawCircle(
+        at + Offset((i - (pips - 1) / 2) * 4.0, 10.5),
+        hot ? 1.8 : 1.5,
+        Paint()..color = ink,
+      );
+    }
+  }
+
+  // -- ports ----------------------------------------------------------------
+
+  void _ports(Canvas c) {
     for (final port in (s.board['ports'] as Map).values.cast<Map>()) {
       final a = vertexPoint(s.vertices[port['vertexIds'][0]]),
           b = vertexPoint(s.vertices[port['vertexIds'][1]]),
           middle = (a + b) / 2;
       final direction = middle - const Offset(360, 325),
-          point = middle + direction / direction.distance * 38;
-      line(c, a, point, const Color(0xff648d84), 3);
-      line(c, b, point, const Color(0xff648d84), 3);
-      c.drawCircle(point, 22, Paint()..color = const Color(0xfffbf6e8));
-      text(c, '${port['ratio']}:1', point - const Offset(0, 5), 17);
+          point = middle + direction / direction.distance * 40;
+      // Two jetties running from the shore vertices out to the trading post.
+      for (final shore in [a, b]) {
+        line(c, shore, point, const Color(0x4d0a2030), 9);
+        line(c, shore, point, const Color(0xff8a6743), 6);
+        line(c, shore, point, const Color(0xffb08a5d), 2.4);
+        final along = point - shore, steps = (along.distance / 11).floor();
+        final unit = along / along.distance;
+        final across = Offset(-unit.dy, unit.dx) * 4.5;
+        for (var i = 1; i < steps; i++) {
+          final p = shore + unit * (i * 11.0);
+          line(c, p - across, p + across, const Color(0xff6f5133), 1.6);
+        }
+      }
+      // A small sail so the post reads as a harbour at a glance.
+      final sail = point + const Offset(0, -30);
+      line(
+        c,
+        sail + const Offset(0, 14),
+        sail + const Offset(0, -12),
+        const Color(0xff6f5133),
+        2.4,
+      );
+      c.drawPath(
+        Path()
+          ..moveTo(sail.dx + 1, sail.dy - 12)
+          ..lineTo(sail.dx + 15, sail.dy + 6)
+          ..lineTo(sail.dx + 1, sail.dy + 6)
+          ..close(),
+        Paint()..color = const Color(0xfff4efe1),
+      );
+      c.drawPath(
+        Path()
+          ..moveTo(sail.dx - 1, sail.dy - 8)
+          ..lineTo(sail.dx - 11, sail.dy + 6)
+          ..lineTo(sail.dx - 1, sail.dy + 6)
+          ..close(),
+        Paint()..color = const Color(0xffdad2bd),
+      );
+      // Trading post plaque, matching the number tokens so the board reads as
+      // one set of components.
+      c.drawOval(
+        Rect.fromCenter(
+          center: point + const Offset(0, 7),
+          width: 46,
+          height: 14,
+        ),
+        Paint()
+          ..color = const Color(0x4d0a2030)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+      c.drawCircle(
+        point,
+        23,
+        Paint()
+          ..shader = const RadialGradient(
+            center: Alignment(-0.35, -0.45),
+            colors: [Color(0xfffffdf5), _parchment, Color(0xffe6d4ac)],
+          ).createShader(Rect.fromCircle(center: point, radius: 23)),
+      );
+      c.drawCircle(
+        point,
+        22,
+        Paint()
+          ..color = _parchmentEdge
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.2,
+      );
+      text(c, '${port['ratio']}:1', point - const Offset(0, 6), 17);
       text(
         c,
         port['resourceType'] == null
             ? 'ANY'
             : (port['resourceType'] as String).toUpperCase(),
-        point + const Offset(0, 11),
+        point + const Offset(0, 10),
         9,
+        colour: const Color(0xff5d5239),
       );
-    }
-    for (final road in s.roads.entries) {
-      final vertices = s.edges[road.key]['vertexIds'] as List,
-          owner = s.players[road.value['ownerPlayerId']] as Map;
-      final a = vertexPoint(s.vertices[vertices[0]]),
-          b = vertexPoint(s.vertices[vertices[1]]);
-      line(c, a, b, const Color(0xff253e38), 14);
-      line(c, a, b, playerColours[owner['colour']]!, 9);
-      text(
-        c,
-        '${(owner['seatIndex'] as int) + 1}',
-        (a + b) / 2,
-        13,
-        colour: owner['colour'] == 'BLUE' || owner['colour'] == 'RED'
-            ? Colors.white
-            : const Color(0xff253e38),
-      );
-    }
-    for (final building in s.buildings.entries) {
-      final at = vertexPoint(s.vertices[building.key]),
-          owner = s.players[building.value['ownerPlayerId']] as Map;
-      final city = building.value['type'] == 'CITY', w = city ? 16.0 : 12.0;
-      final path = Path()
-        ..moveTo(at.dx - w, at.dy + 12)
-        ..lineTo(at.dx - w, at.dy - 3)
-        ..lineTo(at.dx, at.dy - 16)
-        ..lineTo(at.dx + w, at.dy - 3)
-        ..lineTo(at.dx + w, at.dy + 12)
-        ..close();
-      c.drawPath(path, Paint()..color = playerColours[owner['colour']]!);
-      c.drawPath(
-        path,
-        Paint()
-          ..color = const Color(0xff253e38)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3,
-      );
-      text(
-        c,
-        '${(owner['seatIndex'] as int) + 1}${city ? '+' : ''}',
-        at + const Offset(0, 2),
-        13,
-        colour: ['RED', 'BLUE'].contains(owner['colour'])
-            ? Colors.white
-            : const Color(0xff253e38),
-      );
-    }
-    final robber =
-        centreOf(s, s.public['robberHexId'] as String) + const Offset(28, -6);
-    c.drawCircle(
-      robber - const Offset(0, 13),
-      9,
-      Paint()..color = const Color(0xff243d3a),
-    );
-    c.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: robber + const Offset(0, 6),
-          width: 24,
-          height: 29,
-        ),
-        const Radius.circular(9),
-      ),
-      Paint()..color = const Color(0xff243d3a),
-    );
-    for (final id in targets) {
-      final at = centreOf(s, id), chosen = id == selected;
-      c.drawCircle(
-        at,
-        chosen ? 18 : 12,
-        Paint()
-          ..color = chosen ? const Color(0xfff7c45a) : const Color(0xfffdf8eb),
-      );
-      c.drawCircle(
-        at,
-        chosen ? 18 : 12,
-        Paint()
-          ..color = const Color(0xff1d6256)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 4,
-      );
-      if (chosen) text(c, '✓', at, 23);
     }
   }
 
-  void _terrain(Canvas c, String type, Offset at) {
-    final paint = Paint()..color = const Color(0x60304b3f);
-    for (var i = -1; i <= 1; i++) {
-      final p = at + Offset(i * 20, i == 0 ? -4 : 5);
-      switch (type) {
-        case 'FOREST':
-        case 'MOUNTAINS':
-          c.drawPath(
-            Path()
-              ..moveTo(p.dx - 12, p.dy + 12)
-              ..lineTo(p.dx, p.dy - 13)
-              ..lineTo(p.dx + 12, p.dy + 12)
-              ..close(),
-            paint,
-          );
-          if (type == 'FOREST') {
-            line(
-              c,
-              p + const Offset(0, 5),
-              p + const Offset(0, 17),
-              const Color(0xff365947),
-              4,
-            );
-          }
-        case 'FIELDS':
-          line(
-            c,
-            p + const Offset(0, -12),
-            p + const Offset(0, 16),
-            const Color(0xff927737),
-            3,
-          );
-          for (var y = -8.0; y < 10; y += 7) {
-            line(
-              c,
-              p + Offset(-6, y - 4),
-              p + Offset(0, y),
-              const Color(0xff927737),
-              3,
-            );
-            line(
-              c,
-              p + Offset(6, y - 4),
-              p + Offset(0, y),
-              const Color(0xff927737),
-              3,
-            );
-          }
-        case 'HILLS':
-          c.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromCenter(center: p, width: 19, height: 12),
-              const Radius.circular(2),
-            ),
-            paint,
-          );
-        case 'PASTURE':
-          c.drawOval(
-            Rect.fromCenter(center: p, width: 24, height: 17),
-            Paint()..color = const Color(0xaafff7df),
-          );
-          c.drawCircle(p + const Offset(10, 3), 4, paint);
-        default:
-          c.drawArc(
-            Rect.fromCenter(center: p, width: 30, height: 15),
-            0,
-            math.pi,
-            false,
-            Paint()
-              ..color = const Color(0xffb19969)
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 3,
-          );
+  // -- pieces ---------------------------------------------------------------
+
+  void _roads(Canvas c) {
+    for (final road in s.roads.entries) {
+      final vertices = s.edges[road.key]['vertexIds'] as List,
+          owner = s.players[road.value['ownerPlayerId']] as Map;
+      final colour = playerColours[owner['colour']]!;
+      final a = vertexPoint(s.vertices[vertices[0]]),
+          b = vertexPoint(s.vertices[vertices[1]]);
+      final unit = (b - a) / (b - a).distance;
+      // Pull the ends in so neighbouring roads read as separate pieces.
+      final from = a + unit * 7, to = b - unit * 7;
+      line(
+        c,
+        from + const Offset(0, 8),
+        to + const Offset(0, 8),
+        const Color(0x4d0d1c16),
+        18,
+      );
+      line(
+        c,
+        from + const Offset(0, 5),
+        to + const Offset(0, 5),
+        darken(colour, 0.3),
+        17,
+      );
+      line(c, from, to, _ink, 17);
+      line(c, from, to, colour, 13.5);
+      line(
+        c,
+        from - const Offset(0, 3),
+        to - const Offset(0, 3),
+        lighten(colour, 0.18).withValues(alpha: 0.9),
+        4,
+      );
+      text(
+        c,
+        '${(owner['seatIndex'] as int) + 1}',
+        (from + to) / 2,
+        10,
+        colour: inkOn(colour),
+      );
+    }
+  }
+
+  void _buildings(Canvas c) {
+    // Back to front so overlapping pieces stack believably.
+    final ids = s.buildings.keys.toList()
+      ..sort((a, b) => centreOf(s, a).dy.compareTo(centreOf(s, b).dy));
+    for (final id in ids) {
+      final building = s.buildings[id] as Map;
+      final at = vertexPoint(s.vertices[id]);
+      final owner = s.players[building['ownerPlayerId']] as Map;
+      final colour = playerColours[owner['colour']]!;
+      final seat = '${(owner['seatIndex'] as int) + 1}';
+      if (building['type'] == 'CITY') {
+        _city(c, at, colour, seat);
+      } else {
+        _settlement(c, at, colour, seat);
+      }
+    }
+  }
+
+  void _outlined(Canvas c, Path path, Color fill, {double width = 2.4}) {
+    c.drawPath(path, Paint()..color = fill);
+    c.drawPath(
+      path,
+      Paint()
+        ..color = _ink
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = width
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  void _settlement(Canvas c, Offset at, Color colour, String seat) {
+    c.drawOval(
+      Rect.fromCenter(center: at + const Offset(1, 13), width: 34, height: 12),
+      Paint()
+        ..color = const Color(0x520d1c16)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+    // Walls, then a roof split into a lit and a shaded slope.
+    _outlined(
+      c,
+      Path()..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: at + const Offset(0, 5),
+            width: 25,
+            height: 17,
+          ),
+          const Radius.circular(2),
+        ),
+      ),
+      colour,
+    );
+    _outlined(
+      c,
+      Path()
+        ..moveTo(at.dx, at.dy - 19)
+        ..lineTo(at.dx + 16, at.dy - 3.5)
+        ..lineTo(at.dx - 16, at.dy - 3.5)
+        ..close(),
+      lighten(colour, 0.08),
+    );
+    c.drawPath(
+      Path()
+        ..moveTo(at.dx, at.dy - 19)
+        ..lineTo(at.dx + 16, at.dy - 3.5)
+        ..lineTo(at.dx, at.dy - 3.5)
+        ..close(),
+      Paint()..color = darken(colour, 0.16),
+    );
+    c.drawRect(
+      Rect.fromCenter(center: at + const Offset(0, 8), width: 7, height: 10),
+      Paint()..color = darken(colour, 0.3),
+    );
+    text(c, seat, at + const Offset(0, 1), 10, colour: inkOn(colour));
+  }
+
+  void _city(Canvas c, Offset at, Color colour, String seat) {
+    c.drawOval(
+      Rect.fromCenter(center: at + const Offset(1, 15), width: 48, height: 15),
+      Paint()
+        ..color = const Color(0x520d1c16)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    // A tower beside a main hall: the silhouette alone separates it from a
+    // settlement even when the board is fully zoomed out.
+    _outlined(
+      c,
+      Path()..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: at + const Offset(-11, -2),
+            width: 16,
+            height: 34,
+          ),
+          const Radius.circular(2),
+        ),
+      ),
+      colour,
+    );
+    _outlined(
+      c,
+      Path()
+        ..moveTo(at.dx - 11, at.dy - 30)
+        ..lineTo(at.dx - 2, at.dy - 19)
+        ..lineTo(at.dx - 20, at.dy - 19)
+        ..close(),
+      lighten(colour, 0.08),
+    );
+    _outlined(
+      c,
+      Path()..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: at + const Offset(7, 6),
+            width: 27,
+            height: 22,
+          ),
+          const Radius.circular(2),
+        ),
+      ),
+      colour,
+    );
+    _outlined(
+      c,
+      Path()
+        ..moveTo(at.dx + 7, at.dy - 13)
+        ..lineTo(at.dx + 22, at.dy - 4)
+        ..lineTo(at.dx - 8, at.dy - 4)
+        ..close(),
+      lighten(colour, 0.08),
+    );
+    c.drawPath(
+      Path()
+        ..moveTo(at.dx + 7, at.dy - 13)
+        ..lineTo(at.dx + 22, at.dy - 4)
+        ..lineTo(at.dx + 7, at.dy - 4)
+        ..close(),
+      Paint()..color = darken(colour, 0.16),
+    );
+    for (final w in [
+      at + const Offset(-11, -10),
+      at + const Offset(1, 6),
+      at + const Offset(13, 6),
+    ]) {
+      c.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(center: w, width: 6, height: 7),
+          const Radius.circular(1.5),
+        ),
+        Paint()..color = const Color(0xfff6dc94),
+      );
+    }
+    text(c, seat, at + const Offset(7, -8), 10, colour: inkOn(colour));
+  }
+
+  void _robber(Canvas c) {
+    final at =
+        centreOf(s, s.public['robberHexId'] as String) + const Offset(30, -8);
+    c.drawOval(
+      Rect.fromCenter(center: at + const Offset(1, 20), width: 36, height: 13),
+      Paint()
+        ..color = const Color(0x660a1712)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    // A hooded figure: cloak, cowl, then a lit edge down one side.
+    final cloak = Path()
+      ..moveTo(at.dx, at.dy - 20)
+      ..cubicTo(
+        at.dx + 15,
+        at.dy - 14,
+        at.dx + 17,
+        at.dy + 8,
+        at.dx + 15,
+        at.dy + 17,
+      )
+      ..lineTo(at.dx - 15, at.dy + 17)
+      ..cubicTo(
+        at.dx - 17,
+        at.dy + 8,
+        at.dx - 15,
+        at.dy - 14,
+        at.dx,
+        at.dy - 20,
+      )
+      ..close();
+    c.drawPath(cloak, Paint()..color = const Color(0xff2a3b3d));
+    c.drawPath(
+      Path()
+        ..moveTo(at.dx, at.dy - 20)
+        ..cubicTo(
+          at.dx + 15,
+          at.dy - 14,
+          at.dx + 17,
+          at.dy + 8,
+          at.dx + 15,
+          at.dy + 17,
+        )
+        ..lineTo(at.dx, at.dy + 17)
+        ..close(),
+      Paint()..color = const Color(0xff1b2a2c),
+    );
+    c.drawPath(
+      cloak,
+      Paint()
+        ..color = const Color(0xff0e1a1b)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2,
+    );
+    c.drawCircle(
+      at + const Offset(0, -19),
+      9.5,
+      Paint()..color = const Color(0xff35484a),
+    );
+    c.drawCircle(
+      at + const Offset(-2.5, -21),
+      6,
+      Paint()..color = const Color(0xff4a6062),
+    );
+  }
+
+  // -- selection feedback ---------------------------------------------------
+
+  void _targets(Canvas c) {
+    final t = Curves.easeOutBack.transform(revealValue.clamp(0.0, 1.0));
+    for (final id in targets) {
+      final at = centreOf(s, id), chosen = id == selected;
+      final scale = chosen ? 1.0 : (0.55 + 0.45 * t);
+      final radius = (chosen ? 19.0 : 13.0) * scale;
+      // Glow first, so a legal spot is findable without hunting the board.
+      c.drawCircle(
+        at,
+        radius + 10,
+        Paint()
+          ..color = (chosen ? const Color(0xfff7c45a) : const Color(0xff8fe6d2))
+              .withValues(alpha: 0.5 * t)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9),
+      );
+      c.drawCircle(
+        at,
+        radius,
+        Paint()
+          ..shader = RadialGradient(
+            center: const Alignment(-0.3, -0.4),
+            colors: chosen
+                ? const [Color(0xffffe6a6), Color(0xfff3b53f)]
+                : const [Colors.white, Color(0xffe8f6ef)],
+          ).createShader(Rect.fromCircle(center: at, radius: radius)),
+      );
+      c.drawCircle(
+        at,
+        radius,
+        Paint()
+          ..color = chosen ? const Color(0xff8a5a12) : const Color(0xff1d6256)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.6,
+      );
+      if (chosen) {
+        text(c, '✓', at, 22, colour: const Color(0xff5c3a06));
       }
     }
   }
@@ -507,8 +1632,11 @@ class IslandPainter extends CustomPainter {
   bool shouldRepaint(covariant IslandPainter oldDelegate) =>
       oldDelegate.s != s ||
       oldDelegate.targets != targets ||
-      oldDelegate.selected != selected;
+      oldDelegate.selected != selected ||
+      oldDelegate.hovered != hovered;
   @override
   bool shouldRebuildSemantics(covariant IslandPainter oldDelegate) =>
-      shouldRepaint(oldDelegate);
+      oldDelegate.s != s ||
+      oldDelegate.targets != targets ||
+      oldDelegate.selected != selected;
 }

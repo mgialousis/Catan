@@ -56,6 +56,19 @@ class GameSnapshot {
   List<JsonMap> get orderedPlayers => players.values.cast<JsonMap>().toList()
     ..sort((a, b) => (a['seatIndex'] as int).compareTo(b['seatIndex'] as int));
   String name(String id) => players[id]?['nickname'] as String? ?? 'Player';
+  List<JsonMap> get incomingTrades => (public['trades'] as Map).values
+      .cast<JsonMap>()
+      .where(
+        (offer) =>
+            phase == 'ACTION' &&
+            offer['status'] == 'OPEN' &&
+            offer['proposerPlayerId'] != playerId &&
+            (offer['targetPlayerId'] == null ||
+                offer['targetPlayerId'] == playerId) &&
+            !(offer['declinedBy'] as List).contains(playerId) &&
+            (active || offer['proposerPlayerId'] == public['activePlayerId']),
+      )
+      .toList();
   bool canAfford(String command) =>
       (costs[command] ?? {}).entries.every((e) => stock[e.key]! >= e.value);
   int bankRate(String resource) {
