@@ -23,6 +23,8 @@ still a separate Phase 7 check.
 The workflow uses pinned Flutter 3.38.8, Node 22.20.0, Java 17 and the committed dependency locks.
 GitHub actions are pinned to commit hashes. Analysis, Flutter tests, signing-configuration tests
 and APK signature verification must pass before an artifact is uploaded.
+The APK command keeps Flutter's pub/tooling refresh enabled so release plugin registration
+excludes `integration_test` after running tests. A final check rejects any dependency lockfile change.
 
 Repository **variables**, containing public app configuration:
 

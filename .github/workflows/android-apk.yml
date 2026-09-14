@@ -82,13 +82,16 @@ jobs:
 
       - name: Build release APK
         working-directory: apps/mobile
+        # Flutter 3.38 regenerates the native plugin list only when pub is enabled.
+        # After tests, --no-pub leaves integration_test registered in release Java.
         run: >-
-          flutter build apk --release --no-pub
+          flutter build apk --release
           --build-number="$((1000 + GITHUB_RUN_NUMBER))"
           --dart-define-from-file=config/ci.json
 
       - name: Verify APK signature and prepare download
         run: |
+          git diff --exit-code -- apps/mobile/pubspec.lock
           island_apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
           test -n "$island_apksigner"
           "$island_apksigner" verify --verbose apps/mobile/build/app/outputs/flutter-apk/app-release.apk
