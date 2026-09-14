@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,6 +73,59 @@ class _GameScreenState extends ConsumerState<GameScreen>
     notice?.close();
   }
 
+  /// Declines the proposer has not been told about yet. A dialog is modal, so
+  /// a second decline arriving while one is open is queued rather than dropped
+  /// or stacked on top.
+  final _pendingDeclines = <String>[];
+  bool _declineDialogOpen = false;
+
+  void _announceDeclines(GameSnapshot before, GameSnapshot after) {
+    final seen = {
+      for (final offer in before.ownTrades)
+        offer['offerId'] as String: (offer['declinedBy'] as List)
+            .cast<String>()
+            .toSet(),
+    };
+    for (final offer in after.ownTrades) {
+      final previous = seen[offer['offerId'] as String] ?? const <String>{};
+      final declined = (offer['declinedBy'] as List).cast<String>();
+      final fresh = declined.where((id) => !previous.contains(id)).toList();
+      if (fresh.isEmpty) continue;
+      final names = fresh.map(after.name).toList();
+      final everyone = after.eligibleFor(offer).every(declined.contains);
+      _pendingDeclines.add(
+        '${names.length == 1 ? names.single : '${names.take(names.length - 1).join(', ')} and ${names.last}'} '
+        'declined your offer of ${resourceSummary(offer['give'] as Map)} '
+        'for ${resourceSummary(offer['receive'] as Map)}.'
+        '${everyone ? ' Nobody is left who can accept it.' : ''}',
+      );
+    }
+    if (_pendingDeclines.isNotEmpty) unawaited(_drainDeclines());
+  }
+
+  Future<void> _drainDeclines() async {
+    if (_declineDialogOpen) return;
+    _declineDialogOpen = true;
+    while (mounted && _pendingDeclines.isNotEmpty) {
+      final message = _pendingDeclines.removeAt(0);
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.front_hand_outlined, color: _teal),
+          title: const Text('Trade declined'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+    _declineDialogOpen = false;
+  }
+
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason> _showFeedback(
     SnackBar bar,
   ) {
@@ -103,6 +158,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
         );
       }
       if (before != null && after != null && after.version > before.version) {
+        _announceDeclines(before, after);
         if (after.incomingTrades.isEmpty) _closeTradeNotice();
         final known = before.incomingTrades.map((t) => t['offerId']).toSet();
         final fresh = after.incomingTrades

@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -163,13 +162,8 @@ List<Offset> _hexPoints(GameSnapshot s, String id) =>
         .map((v) => vertexPoint(s.vertices[v]))
         .toList();
 
-/// Union of every tile, used for the drop shadow, reef shelf and coastline. It
-/// is memoised because the combine is the one non-trivial geometry cost here and
-/// the snapshot is immutable.
-GameSnapshot? _outlineKey;
-Path? _outlineValue;
+/// Union of every tile, computed only when the terrain layer needs painting.
 Path islandOutline(GameSnapshot s) {
-  if (identical(_outlineKey, s) && _outlineValue != null) return _outlineValue!;
   var union = Path();
   for (final id in s.hexes.keys) {
     union = Path.combine(
@@ -178,9 +172,25 @@ Path islandOutline(GameSnapshot s) {
       Path()..addPolygon(_hexPoints(s, id), true),
     );
   }
-  _outlineKey = s;
-  _outlineValue = union;
   return union;
+}
+
+// Snapshots are deep-frozen copies, so identity changes even when a trade or
+// resource update leaves the board unchanged. Compare only each layer's inputs.
+bool _sameJson(Object? a, Object? b) {
+  if (identical(a, b)) return true;
+  if (a is Map && b is Map) {
+    return a.length == b.length &&
+        a.keys.every((key) => b.containsKey(key) && _sameJson(a[key], b[key]));
+  }
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!_sameJson(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return a == b;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,15 +348,38 @@ class _IslandBoardState extends State<IslandBoard>
                       onExit: (_) {
                         if (hovered != null) setState(() => hovered = null);
                       },
-                      child: CustomPaint(
+                      child: SizedBox.fromSize(
                         size: boardSize,
-                        painter: IslandPainter(
-                          widget.snapshot,
-                          widget.targets,
-                          widget.selected,
-                          widget.onTarget,
-                          hovered: hovered,
-                          reveal: reveal,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // Retain the expensive artwork below the zoom
+                            // transform, independently of pieces and feedback.
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                isComplex: true,
+                                painter: _TerrainPainter(widget.snapshot),
+                              ),
+                            ),
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                isComplex: true,
+                                painter: _PiecesPainter(widget.snapshot),
+                              ),
+                            ),
+                            RepaintBoundary(
+                              child: CustomPaint(
+                                painter: IslandPainter(
+                                  widget.snapshot,
+                                  widget.targets,
+                                  widget.selected,
+                                  widget.onTarget,
+                                  hovered: hovered,
+                                  reveal: reveal,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -784,24 +817,10 @@ void _desert(TileBrush b) {
 // Painter
 // ---------------------------------------------------------------------------
 
-/// Original vector presentation; no licensed board art or raster dependency.
-class IslandPainter extends CustomPainter {
-  IslandPainter(
-    this.s,
-    this.targets,
-    this.selected,
-    this.onTarget, {
-    this.hovered,
-    this.reveal,
-  }) : revealValue = reveal is Animation<double> ? reveal.value : 1.0,
-       super(repaint: reveal);
+/// Original vector presentation shared by the independently retained layers.
+class _IslandArtwork {
+  _IslandArtwork(this.s);
   final GameSnapshot s;
-  final Set<String> targets;
-  final String? selected;
-  final ValueChanged<String> onTarget;
-  final String? hovered;
-  final Listenable? reveal;
-  final double revealValue;
 
   /// Height of the extruded tile wall. Everything else that needs to look like
   /// it is standing on the island is offset against this one number.
@@ -842,45 +861,22 @@ class IslandPainter extends CustomPainter {
     p.paint(c, centre - Offset(p.width / 2, p.height / 2));
   }
 
-  /// The board is hundreds of gradient and blur operations, and all but the
-  /// selection feedback is fixed for a given snapshot. Recording that once and
-  /// replaying it keeps hover and target changes to a handful of draw calls.
-  static GameSnapshot? _layerKey;
-  static Size? _layerSize;
-  static ui.Picture? _layerValue;
-
-  ui.Picture _layer(Size size) {
-    if (identical(_layerKey, s) && _layerSize == size && _layerValue != null) {
-      return _layerValue!;
-    }
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Offset.zero & size);
+  void terrain(Canvas canvas, Size size) {
     _ocean(canvas, size);
     _coast(canvas);
     _tiles(canvas);
     _ports(canvas);
+  }
+
+  void pieces(Canvas canvas) {
     _roads(canvas);
     _buildings(canvas);
     _robber(canvas);
-    _layerValue?.dispose();
-    _layerValue = recorder.endRecording();
-    _layerKey = s;
-    _layerSize = size;
-    return _layerValue!;
   }
 
-  @override
-  void paint(Canvas c, Size size) {
-    c.drawPicture(_layer(size));
-    _hover(c);
-    _targets(c);
-  }
-
-  /// Hover sits outside the cached layer so pointing at a tile never re-records
-  /// the board.
-  void _hover(Canvas c) {
+  void hover(Canvas c, String? hovered) {
     if (hovered == null || !s.hexes.containsKey(hovered)) return;
-    final path = Path()..addPolygon(_hexPoints(s, hovered!), true);
+    final path = Path()..addPolygon(_hexPoints(s, hovered), true);
     c.save();
     c.clipPath(path);
     c.drawPath(path, Paint()..color = Colors.white.withValues(alpha: 0.12));
@@ -1543,7 +1539,7 @@ class IslandPainter extends CustomPainter {
 
   // -- selection feedback ---------------------------------------------------
 
-  void _targets(Canvas c) {
+  void targets(Canvas c, Set<String> targets, String? selected, double revealValue) {
     final t = Curves.easeOutBack.transform(revealValue.clamp(0.0, 1.0));
     for (final id in targets) {
       final at = centreOf(s, id), chosen = id == selected;
@@ -1581,6 +1577,65 @@ class IslandPainter extends CustomPainter {
         text(c, '✓', at, 22, colour: const Color(0xff5c3a06));
       }
     }
+  }
+
+}
+
+class _TerrainPainter extends CustomPainter {
+  _TerrainPainter(this.s);
+  final GameSnapshot s;
+
+  @override
+  void paint(Canvas canvas, Size size) => _IslandArtwork(s).terrain(canvas, size);
+
+  @override
+  bool shouldRepaint(covariant _TerrainPainter old) => !_sameJson(old.s.board, s.board);
+}
+
+class _PiecesPainter extends CustomPainter {
+  _PiecesPainter(this.s);
+  final GameSnapshot s;
+
+  @override
+  void paint(Canvas canvas, Size size) => _IslandArtwork(s).pieces(canvas);
+
+  @override
+  bool shouldRepaint(covariant _PiecesPainter old) =>
+      !_sameJson(old.s.board, s.board) ||
+      !_sameJson(old.s.roads, s.roads) ||
+      !_sameJson(old.s.buildings, s.buildings) ||
+      old.s.public['robberHexId'] != s.public['robberHexId'] ||
+      !mapEquals(
+        old.s.players.map((id, player) => MapEntry(id, player['colour'])),
+        s.players.map((id, player) => MapEntry(id, player['colour'])),
+      );
+}
+
+/// Interactive feedback and accessibility, separate from the expensive artwork.
+class IslandPainter extends CustomPainter {
+  IslandPainter(
+    this.s,
+    this.targets,
+    this.selected,
+    this.onTarget, {
+    this.hovered,
+    this.reveal,
+  }) : super(repaint: reveal);
+
+  final GameSnapshot s;
+  final Set<String> targets;
+  final String? selected;
+  final ValueChanged<String> onTarget;
+  final String? hovered;
+  final Animation<double>? reveal;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final artwork = _IslandArtwork(s);
+    artwork.hover(canvas, hovered);
+    // Read the live value on each tick; capturing it in the constructor freezes
+    // the effect while still scheduling all the animation's repaints.
+    artwork.targets(canvas, targets, selected, reveal?.value ?? 1);
   }
 
   @override
@@ -1630,13 +1685,15 @@ class IslandPainter extends CustomPainter {
       ];
   @override
   bool shouldRepaint(covariant IslandPainter oldDelegate) =>
-      oldDelegate.s != s ||
-      oldDelegate.targets != targets ||
+      !_sameJson(oldDelegate.s.board, s.board) ||
+      !setEquals(oldDelegate.targets, targets) ||
       oldDelegate.selected != selected ||
-      oldDelegate.hovered != hovered;
+      oldDelegate.hovered != hovered ||
+      oldDelegate.reveal != reveal;
   @override
   bool shouldRebuildSemantics(covariant IslandPainter oldDelegate) =>
       oldDelegate.s != s ||
-      oldDelegate.targets != targets ||
-      oldDelegate.selected != selected;
+      !setEquals(oldDelegate.targets, targets) ||
+      oldDelegate.selected != selected ||
+      oldDelegate.onTarget != onTarget;
 }

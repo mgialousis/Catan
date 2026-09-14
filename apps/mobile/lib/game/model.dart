@@ -69,6 +69,21 @@ class GameSnapshot {
             (active || offer['proposerPlayerId'] == public['activePlayerId']),
       )
       .toList();
+
+  /// Offers this player proposed, in seat order of their decliners' arrival.
+  /// Used to notice a decline coming back, which the proposer otherwise has no
+  /// way to see: a declined offer stays OPEN for everyone else.
+  List<JsonMap> get ownTrades => (public['trades'] as Map).values
+      .cast<JsonMap>()
+      .where((offer) => offer['proposerPlayerId'] == playerId)
+      .toList();
+
+  /// Who could still accept [offer]: its target, or every opponent when it was
+  /// offered to the table.
+  Set<String> eligibleFor(JsonMap offer) => offer['targetPlayerId'] == null
+      ? players.keys.where((id) => id != playerId).toSet()
+      : {offer['targetPlayerId'] as String};
+
   bool canAfford(String command) =>
       (costs[command] ?? {}).entries.every((e) => stock[e.key]! >= e.value);
   int bankRate(String resource) {

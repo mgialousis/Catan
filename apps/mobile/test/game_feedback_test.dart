@@ -107,6 +107,63 @@ void main() {
     },
   );
 
+  testWidgets('a decline on your own offer is announced once', (t) async {
+    final port = await showGame(t, 'action');
+    final base = uiSnapshot('waiting');
+    final me = base['privateState']['playerId'] as String;
+    final trade = (base['publicState']['trades'] as Map).values.single as Map;
+    // Re-point the fixture's offer so this player is the proposer, offered to
+    // the table rather than to one opponent.
+    trade['proposerPlayerId'] = me;
+    trade['targetPlayerId'] = null;
+    trade['declinedBy'] = <String>[];
+    port.emit('snapshot', base);
+    await t.pumpAndSettle();
+    expect(find.text('Trade declined'), findsNothing);
+
+    final opponents = (base['publicState']['players'] as Map).keys
+        .cast<String>()
+        .where((id) => id != me)
+        .toList();
+    final first = uiSnapshot('waiting');
+    first['version'] = (base['version'] as int) + 1;
+    final firstTrade =
+        (first['publicState']['trades'] as Map).values.single as Map;
+    firstTrade['proposerPlayerId'] = me;
+    firstTrade['targetPlayerId'] = null;
+    firstTrade['declinedBy'] = [opponents.first];
+    port.emit('snapshot', first);
+    await t.pumpAndSettle();
+    expect(find.text('Trade declined'), findsOneWidget);
+    expect(find.textContaining('declined your offer of'), findsOneWidget);
+    // Not yet exhausted: other opponents can still accept.
+    expect(find.textContaining('Nobody is left'), findsNothing);
+    await t.tap(find.text('OK'));
+    await t.pumpAndSettle();
+    expect(find.text('Trade declined'), findsNothing);
+
+    // Re-delivering the same state must not announce the decline again.
+    port.emit('snapshot', first);
+    await t.pumpAndSettle();
+    expect(find.text('Trade declined'), findsNothing);
+
+    // The last outstanding opponents decline together.
+    final rest = uiSnapshot('waiting');
+    rest['version'] = (first['version'] as int) + 1;
+    final restTrade =
+        (rest['publicState']['trades'] as Map).values.single as Map;
+    restTrade['proposerPlayerId'] = me;
+    restTrade['targetPlayerId'] = null;
+    restTrade['declinedBy'] = opponents;
+    port.emit('snapshot', rest);
+    await t.pumpAndSettle();
+    expect(find.textContaining('Nobody is left'), findsOneWidget);
+    await t.tap(find.text('OK'));
+    await t.pumpAndSettle();
+    expect(port.commands, isEmpty);
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('new trade alerts once, opens review and expires', (t) async {
     final port = await showGame(t, 'action');
     final offer = uiSnapshot('waiting');
