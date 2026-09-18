@@ -1,5 +1,7 @@
 import { PHASES, RULES_VERSION, type PublicState, type Phase, type Resources } from '@island/protocol/contracts';
 export { RULES_VERSION };
+export { legalCommands, robberVictims, canonicalDiscard, isDiscard, type PlayerView, type LegalHints, type LegalCommand } from './legal.js';
+export { chooseCommand, seedFrom, type BotDifficulty } from './bot.js';
 
 export interface DevelopmentCard {
   readonly id: string;
