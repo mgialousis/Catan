@@ -142,3 +142,10 @@ The Phase 3 addition `winnerVictoryPointCardIds` finalized the predeployment v1 
 A pending game envelope is persisted before sending. Native uses secure storage; Web uses tab-local sessionStorage, keyed by subject/room/player. Reload waits for the authorized snapshot before replaying the original ID. Transient failures have four delays (1, 2, 4, 8 seconds), then the client exposes manual retry. Acknowledgement does not invent local state or advance its version. Changing identity clears the view and that session's pending intent. No offline move queue or cached private snapshot is created.
 
 Phase 7 review update: authenticated room subscriptions now refresh `players.last_seen_at` at most once per minute per player. This is advisory activity metadata; socket membership alone decides live presence. A per-room epoch mismatch retires the process through the same path as global fencing.
+
+September 19 pause persistence correction: when `MANUAL`, `RECOVERY` or
+`DATABASE_UNAVAILABLE` requires host resume, connection changes still emit presence
+but do not toggle persisted `DISCONNECTED` or append gameplay records. Legacy
+combined reasons are retained until explicit resume. `RESUME_GAME` checks required
+seats online under the room lock. Disconnect-only pauses still resume automatically;
+saved clock budgets, host authorization and game rules are unchanged.

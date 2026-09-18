@@ -56,8 +56,8 @@ or never update their advisory `last_seen_at` timestamp.
 | P7.4 Web | Live, real configuration, entry-point cache policy checked. |
 | P7.5 Native | Signed Android APK produced; user reports Android use. Exact device/build acceptance, iOS provisioning and physical iPhone install remain open. |
 | P7.6–P7.7 Matches | Earlier hosted browser scenario is partial evidence. Mixed native/web privacy/reconnect cases and complete timed/untimed human matches on separate networks remain open. |
-| P7.8 Performance | Regression tests and fewer rendering operations are verified. Physical Android frame timings, command/convergence/reconnect timings and a two-hour four-client soak remain open. |
-| P7.9 Operations | Runbooks and local retention tests exist. Hosted operator retention and backup/restore rehearsal remain open. |
+| P7.8 Performance | Regression tests and fewer rendering operations verified; restored hosted recipient snapshots measure 13,715–13,804 bytes uncompressed. Physical Android frame timings, command/convergence/reconnect timings and a two-hour four-client soak remain open. |
+| P7.9 Operations | Hosted application backup and isolated local restore verified September 19. Full Auth recovery and privileged hosted retention still open; local-copy retention dry run found zero eligible records. |
 | P7.10 Handoff | Release links and limitations recorded here; device versions and final acceptance results still needed. |
 
 Finite hosted preflight passed after deployment: readiness, compatible protocol/rules,
@@ -67,7 +67,7 @@ web `no-cache`, explicit invalid-token rejection. Ten warm version probes measur
 Before/after deployment and subsequent observation: version 701, 702 game logs,
 710 room-linked receipts and all public/private/server/clock hashes unchanged.
 One legitimate host transfer created room revision 158 (was 157) and one ROOM outbox
-event, with status unchanged; no game transition occurred. At 23:13 UTC, totals
+event, with status unchanged; no game transition occurred. At 23:16:53 UTC, totals
 remained stable at 861 room-linked outbox events and 634 presence-pause events.
 This is a finite passive observation plus local reconnect regression evidence,
 not a two-hour hosted soak or a controlled production reconnect test.
@@ -75,6 +75,34 @@ not a two-hour hosted soak or a controlled production reconnect test.
 Render MCP login works after reauthentication. Supabase MCP refresh currently fails;
 verified-TLS access with the existing restricted runtime credential works. Do not
 assume it is a privileged maintenance credential. Do not reapply the foundation.
+
+## September 19 operations evidence
+
+A read-only, verified-TLS `pg_dump` of `app` used PostgreSQL 17.6 and an exported
+repeatable-read snapshot. The runtime role's existing SELECT policy was used with
+`--enable-row-security`; no hosted permissions or schema changed. The 305,432-byte
+custom archive is stored privately at `.local/backups/20260919/app.dump` (mode 600,
+directory mode 700, ignored by Git), alongside verification JSON. SHA-256:
+`57656097b16027ee11200f0843f23531133fbf905fab4c8db44be9d5bf8db96f`.
+
+Restoration into a separate local database matched the source snapshot across all
+eight app tables: 3 rooms, 9 players, 3 game states, 804 logs, 837 receipts,
+1,007 outbox events, and one row each for schema/runtime metadata. Foreign keys and
+other constraints restored successfully; game/clock invariants and log-tail versions
+matched. This deliberately excluded global roles, original ACLs and Auth records:
+local `auth.users` subject-ID placeholders satisfied foreign keys. It therefore
+verifies application-data recovery, **not** guest sign-in/session recovery or a full
+Supabase disaster restore. The protected archive is not a substitute for an Auth backup.
+The temporary restored database was removed after verification; the private archive
+and evidence were retained.
+
+On that isolated copy, retention dry run selected zero terminal rooms/receipt bodies
+and made no changes. Hosted privileged maintenance was not invoked with the runtime
+credential. Snapshot-size measurements covered all nine recipient projections in
+the three restored games. Render's first two post-deploy memory samples were about
+55–59 MiB; that short idle sample is not evidence of four-client load or a soak pass.
+
+## Next acceptance session
 
 User device availability: one Android phone, APK downloaded from GitHub; exact model
 and installed build not yet recorded. No iPhone is currently available, and no
