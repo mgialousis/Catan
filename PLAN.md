@@ -1,6 +1,6 @@
 # Private multiplayer board game — technical execution blueprint
 
-Status: **Phases 1–6 implemented with local evidence. Phase 7 in progress: hosted Supabase and both free Render services are live and preflight-clean, and a four-client game has been played through the deployment (P7.2 and P7.4 done, P7.3 partial). Physical devices, separate networks, a complete match, measured ingress and soak measurement remain open (P4.10, P7.3, P7.5–P7.10).**
+Status: **Phases 1–6 implemented. Phase 7 is partial: hosted services and signed Android builds are available; P7.2/P7.4 are complete. See [current status](docs/status.md) for release commits, the pause-write fix, saved-game baseline and remaining acceptance evidence. Physical devices, separate-network full matches, measured ingress and soak measurements remain open.**
 
 Prepared: 2026-09-08. Workspace: `/Users/miltos/Downloads/Catan`.
 
@@ -584,7 +584,7 @@ Dependencies: prior exit gates; free hosting accounts and access to test devices
 - [x] P7.2 Export any existing hosted data, apply reviewed migrations from the operator environment and verify permissions. **Verified:** project confirmed empty (no export needed), migration applied, permission matrix and append-only guarantees checked against the hosted database.
 - [ ] P7.3 Build/deploy the API Docker image; configure secrets, port, health checks, origins and graceful shutdown.
 - [x] P7.4 Build the Flutter web artifact with pinned tooling and public configuration; publish it as a Render static site. **Verified:** live at https://island-table-web.onrender.com with `cache-control: no-cache`.
-- [ ] P7.5 Produce a signed Android APK and an iOS development build; document installation separately from hosting.
+- [ ] P7.5 Produce a signed Android APK and an iOS development build; document installation separately from hosting. **Android release automation/build 10 complete; physical-device evidence and iOS provisioning remain open.**
 - [ ] P7.6 Run the deployed multi-client scenario suite in Section 4, including mixed native/web clients.
 - [ ] P7.7 Play a complete untimed and timed match across separate networks with three and four seats covered.
 - [ ] P7.8 Measure command latency, snapshot size, reconnect behavior, memory and bandwidth; correct failures within the target capacity.
@@ -697,6 +697,7 @@ Year of Plenty and Monopoly do not need partially committed choice-timeout state
 - After the server detects the final socket loss, show offline presence. If that player must currently act, freeze the game and all running clocks in a transaction. If the deadline already expired before detection, the due timeout wins; no client-reported timestamp rewrites history.
 - If the absent player is not currently required, play can continue until their next required decision. When every player is offline, pause immediately on detection.
 - Pause reasons are a set: `MANUAL`, `DISCONNECTED`, `RECOVERY`, `DATABASE_UNAVAILABLE`. Store exact remaining budgets when pausing. Reconnection can clear a disconnect reason but cannot clear a manual or recovery pause.
+- While any host-resume reason (`MANUAL`, `RECOVERY`, `DATABASE_UNAVAILABLE`) remains, presence notifications do not mutate saved pause reasons, versions or game records. Legacy combined reasons stay until explicit resume; resume rechecks live required-player presence under the room lock.
 - Resume automatically only when the sole reason was disconnect and all currently required actors have returned. Manual/recovery pauses require host resume. Restoring a socket never grants a fresh full turn budget.
 - After the host has no socket for 10 seconds, transfer controls to the connected member with the lowest seat index; if none are connected, retain a valid host reference until an eligible member returns, then transfer after the remaining absence grace. If a host voluntarily leaves the lobby, choose the lowest connected seat immediately, or the lowest occupied seat as the fallback reference. This changes the room revision, not turn order or hand ownership. Lobby and in-game transfer use the same ownership rules.
 - Any explicit pause or abandon command requires host authorization and is logged. The host can wait, resume when requirements are met, or abandon without a winner. There is no AI substitution or automatic removal of a started-game player.
@@ -909,4 +910,4 @@ The stack, private rooms, live base-game play, nickname entry and free initial c
 | Paused game capacity | A paused game retains the one active slot until resumed, completed or explicitly abandoned |
 | Terminal data | Keep completed records for 30 days, with explicit maintenance/export before cleanup |
 
-Next action: **connect the chosen free Supabase project and Render workspace, then complete hosted and physical-device acceptance.** Phase 7 preparation is implemented; its exit gate remains open. See [Phase 7 verification](docs/phase-7-verification.md) and [deployment runbook](docs/deployment.md).
+Next action: **follow the current acceptance handoff in [status](docs/status.md); do not reprovision the existing services or reapply the foundation.** Phase 7's exit gate remains open. See [verification history](docs/phase-7-verification.md) and [deployment runbook](docs/deployment.md).

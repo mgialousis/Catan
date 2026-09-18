@@ -4,6 +4,9 @@
 real-device and separate-network acceptance is still open. Local artifacts built with
 `*.example.invalid` URLs verify packaging only and must be rebuilt with real public configuration.
 
+Read [current status](status.md) for verified release commits, APK downloads and the
+saved-game baseline. Dated deployment records below are historical.
+
 ## What is currently deployed
 
 | Piece | Value |
@@ -42,8 +45,8 @@ local/hosted tables, columns, indexes, constraints, functions and RLS policies a
 original SQL was preserved, and no application schema or game data was changed by the repair.
 A private before-record/schema copy is in ignored `.local/migration-audit/`.
 
-MCP authentication is available; Supabase CLI authentication is still separate and currently
-missing. Before a future CLI database deployment, authenticate the CLI and review
+MCP and CLI authentication are separate and can expire. Check [current access status](status.md)
+before operating. Before a future CLI database deployment, authenticate the CLI and review
 `supabase db push --dry-run --skip-vault`; no hosted CLI dry run is claimed here. Do not reapply
 the foundation. See [Supabase migration troubleshooting](https://supabase.com/docs/guides/deployment/database-migrations#diagnosing-and-fixing-sync-errors).
 

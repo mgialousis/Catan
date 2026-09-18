@@ -1,6 +1,6 @@
-# Phase 7 progress — deployment preparation
+# Phase 7 verification history
 
-Status: **partially implemented; hosted deployment and the Phase 7 exit gate are not complete.** No hosted resources or paid plans were created. Work used one agent. See the [deployment runbook](deployment.md) for the concrete configuration and remaining acceptance steps.
+Current status: **hosted services are deployed and signed Android builds are available; the Phase 7 exit gate remains incomplete.** Read [current status](status.md) first for release commits, the pause-write fix and remaining acceptance gates. Sections below record dated work; statements about absent hosting or unresolved migration history describe earlier checkpoints. No paid resource was created by this work.
 
 ## Claude Round 5 disposition
 
@@ -222,7 +222,9 @@ The driver script is kept out of the repository at `.local/hosted-playthrough.mj
 alongside `scripts/check-game-web.mjs` would need its database assertions reworked, since the hosted
 runtime role deliberately cannot delete fixtures.
 
-## Blocked or unverified gates
+## Historical acceptance checkpoint — before the September 14 follow-up
+
+This table is retained as historical evidence. The [current gate table](status.md#remaining-acceptance) supersedes it.
 
 | Gate | Missing evidence/input |
 | --- | --- |
@@ -236,11 +238,11 @@ runtime role deliberately cannot delete fixtures.
 | P7.9 Operations | Hosted retention invocation and backup/restore rehearsal into an isolated test database. The runbook/tooling is prepared. |
 | P7.10 Final evidence | Service links, actual physical-device versions, acceptance logs and account quota settings. |
 
-Access: Supabase and Render MCP servers are both configured and were used for provisioning and deployment. The Supabase CLI still reports **“Access token not provided”**, so migrations went through MCP `apply_migration` rather than `supabase db push`; the remote history records the same migration name but a different version ID from the checked-in file (see the correction above). No Render CLI is installed and none is needed.
+Access at that checkpoint: Supabase and Render MCP were used for provisioning and deployment; the CLI lacked an access token. The then-mismatched migration version was subsequently reconciled on September 14 (see below). Authentication can expire; verify access rather than relying on this historical session.
 
 ## Handoff — suggested order for the remaining Phase 7 work
 
-Phase 7 stays open. Hosted MCP access is available; physical devices and iOS provisioning are still needed. First deploy the reviewed application fixes and reconcile migration history before future database changes; then continue the acceptance work below.
+Phase 7 stays open. Reviewed application fixes have been deployed and migration history is reconciled. Follow [current status](status.md) for the current API fix and evidence. Physical devices and iOS provisioning are still needed; the items below describe the remaining acceptance work, not a request to reprovision services or rerun the foundation migration.
 
 1. **Measure ingress and set `TRUSTED_PROXY_HOPS` (P7.3).** It is still the unmeasured default of `0`,
    which means per-IP invitation limits may pool every player behind Render's address. Send differing

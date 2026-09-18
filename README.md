@@ -1,8 +1,8 @@
-# Island Table
+# Catan
 
 A Flutter client and authoritative NestJS backend for a private, base-game multiplayer board game. **Play with 3–4 guests in a private room, with optional turn timers, saved disconnect pauses and restart recovery (Phases 1–6).**
 
-The same Flutter project targets Web, Android and iOS. Development uses local Supabase Auth/PostgreSQL through Docker. No hosted services are required for this phase.
+The same Flutter project targets Web, Android and iOS. Hosted Web/API services and signed Android APK builds are available; physical-device acceptance remains in progress. See [current status](docs/status.md) for releases, downloads and remaining checks. Local development uses Supabase Auth/PostgreSQL through Docker and requires no hosted services.
 
 ## Prerequisites
 

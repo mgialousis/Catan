@@ -4,6 +4,11 @@ The [Android APK workflow](https://github.com/mgialousis/Catan/actions/workflows
 produces a signed release APK for the hosted game. It runs on changes to app/protocol/build files
 on `main`, or manually with **Run workflow**. It does not deploy Render services.
 
+Latest verified client: [build 10](https://github.com/mgialousis/Catan/actions/runs/34893289994),
+commit `7833c74`, signed release APK, successful. See [current status](status.md) for
+API-only fixes that do not require reinstalling the app. The early build verification
+below is a historical checksum record, not the latest download.
+
 ## Download and install
 
 1. Open a successful workflow run and download `island-table-android-<run number>` from **Artifacts**.
