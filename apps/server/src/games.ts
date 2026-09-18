@@ -327,6 +327,13 @@ export class Games {
           const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE',[room.id])).rows[0];
           if (!row) throw new RepairRequired('Missing saved game; repair required');
           let state = this.state(row); const now = await this.now(db);
+          // Manual/recovery pauses require an explicit host resume regardless of
+          // presence. Reconnecting phones must not toggle DISCONNECTED here:
+          // each toggle otherwise writes state, a log, a receipt and an outbox
+          // event forever while the saved game itself has not changed. Presence
+          // is delivered separately; RESUME_GAME checks requiredOnline under
+          // the room lock. Keep legacy combined reasons intact until that resume.
+          if (state.publicState.pauseReasons.some(reason => reason !== 'DISCONNECTED')) continue;
           // A deadline crossed since job collection. Resolve it on the next tick before pausing.
           if (timerJobs(state).some(job => Date.parse(job.deadline) <= Date.parse(now))) { clocksRunning = true; delay = 0; continue; }
           const reasons = new Set<PauseReason>(state.publicState.pauseReasons);

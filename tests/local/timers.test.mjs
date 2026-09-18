@@ -12,7 +12,7 @@ import { isValid } from '../../packages/protocol/dist/index.js';
 import { applyCommand, canRoad, canSettle, bankRate, replayRandom, assertInvariants, projectGame } from '../../packages/game-engine/dist/index.js';
 import { resources, asAction, giveCard } from '../../packages/game-engine/test/helpers.mjs';
 import { Database } from '../../apps/server/dist/database.js';
-import { timerJobs, nextDeadline, advanceClock, assertClock } from '../../apps/server/dist/game-clock.js';
+import { timerJobs, nextDeadline, advanceClock, pauseState, assertClock } from '../../apps/server/dist/game-clock.js';
 import { seeded, roll } from '../../packages/game-engine/test/helpers.mjs';
 import { scenario } from '../../scripts/preview/table.mjs';
 
@@ -191,11 +191,42 @@ test('persisted timers and recovery with four authenticated phones', { timeout: 
     });
     await t.test('manual pause survives reconnection; host controls require the host',async()=>{
       await fixture();assert.equal((await send(clients[0],command(state,'PAUSE_GAME'))).status,'ACCEPTED');await converge();
+      const paused=await readState();
       const index=clients.findIndex(c=>c.playerId===state.publicState.activePlayerId);clients[index].socket.disconnect();
-      await until(async()=> (await readState()).publicState.pauseReasons.includes('DISCONNECTED'));
-      clients[index]=await connect(guests[index]);await until(async()=>!(await readState()).publicState.pauseReasons.includes('DISCONNECTED'));await converge();
+      await until(()=>!app.get(Rooms).online(roomId).has(paused.publicState.activePlayerId));await games.tick();
+      assert.deepEqual(await readState(),paused,'disconnect cannot rewrite a manually saved game');
+      clients[index]=await connect(guests[index]);await until(()=>app.get(Rooms).online(roomId).has(paused.publicState.activePlayerId));await games.tick();await converge();
       assert.deepEqual(state.publicState.pauseReasons,['MANUAL']);assert.equal((await send(clients[1],command(state,'RESUME_GAME'))).error.code,'FORBIDDEN');
       assert.equal((await send(clients[0],command(state,'RESUME_GAME'))).status,'ACCEPTED');await converge();
+    });
+    for(const reasons of [['MANUAL'],['RECOVERY'],['DATABASE_UNAVAILABLE'],['DISCONNECTED','RECOVERY']]) await t.test(`saved pause ${reasons.join('+')} does not write on presence flaps or idle ticks`,async()=>{
+      await fixture('DISCARD_REQUIRED');
+      const paused=pauseState(state,reasons,new Date().toISOString(),seeded(901));await seed(paused);await games.flush();await app.get(Rooms).flush();
+      const required=paused.publicState.requiredPlayerIds.find(id=>id!==clients[0].playerId);
+      const index=clients.findIndex(c=>c.playerId===required);
+      assert.ok(index>0,'keep the host connected so only required-player presence changes');
+      async function persisted() {
+        const row=(await admin.query('SELECT version,updated_at,clock_state FROM app.game_states WHERE room_id=$1',[roomId])).rows[0];
+        for(const table of ['move_logs','outbox_events','command_receipts'])row[table]=(await admin.query(`SELECT count(*)::int n FROM app.${table} WHERE room_id=$1`,[roomId])).rows[0].n;
+        return row;
+      }
+      const baseline=await persisted();
+      for(let cycle=0;cycle<3;cycle++) {
+        clients[index].socket.disconnect();await until(()=>!app.get(Rooms).online(roomId).has(required));await quiesce();
+        for(let tick=0;tick<3;tick++)await games.tick();
+        assert.equal(games.runtimeTimer,undefined,'a host-resume pause must not schedule a polling loop');
+        assert.deepEqual(await persisted(),baseline,'offline ticks must not append records or update state');
+        clients[index]=await connect(guests[index]);await until(()=>app.get(Rooms).online(roomId).has(required));await quiesce();await games.tick();
+        assert.deepEqual(await persisted(),baseline,'reconnection must not append records or update state');
+        assert.deepEqual(await readState(),paused,'inventory, version and saved clock budgets stay identical');
+      }
+      clients[index].socket.disconnect();await until(()=>!app.get(Rooms).online(roomId).has(required));await quiesce();
+      assert.equal((await send(clients[0],command(paused,'RESUME_GAME'))).error.code,'PLAYERS_NOT_READY');
+      assert.deepEqual(await readState(),paused,'host resume still checks current presence under the room lock');
+      clients[index]=await connect(guests[index]);await until(()=>app.get(Rooms).online(roomId).has(required));await quiesce();
+      assert.equal((await send(clients[0],command(paused,'RESUME_GAME'))).status,'ACCEPTED');await converge();
+      assert.deepEqual(state.publicState.pauseReasons,[]);
+      for(const [id,clock] of Object.entries(paused.clockState.discards))assert.equal(state.clockState.discards[id].remainingMs,clock.remainingMs);
     });
     await t.test('terminated runtime DB connection holds actions and recovers the identical hands',async()=>{
       await fixture();await quiesce();const before=state,db=app.get(Database);
@@ -237,7 +268,7 @@ test('persisted timers and recovery with four authenticated phones', { timeout: 
       await fixture();const before=state;clients[0].socket.disconnect();await until(async()=> (await admin.query('SELECT host_player_id FROM app.rooms WHERE id=$1',[roomId])).rows[0].host_player_id!==clients[0].playerId,14000);
       const host=(await admin.query('SELECT host_player_id FROM app.rooms WHERE id=$1',[roomId])).rows[0].host_player_id;
       assert.equal(host,clients[1].playerId);assert.equal((await readState()).publicState.activePlayerId,before.publicState.activePlayerId);
-      clients[0]=await connect(guests[0]);await converge();
+      clients[0]=await connect(guests[0]);await until(async()=>!(await readState()).publicState.pauseReasons.length);await converge();
       assert.equal((await send(clients[0],command(state,'ABANDON_GAME'))).error.code,'FORBIDDEN');
       assert.equal((await send(clients[1],command(state,'ABANDON_GAME'))).status,'ACCEPTED');
       const room=(await admin.query('SELECT status,active_slot FROM app.rooms WHERE id=$1',[roomId])).rows[0];assert.equal(room.status,'ABANDONED');assert.equal(room.active_slot,null);assert.equal((await readState()).publicState.winnerPlayerId,null);
