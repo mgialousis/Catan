@@ -31,6 +31,12 @@ export interface Board {
 }
 export interface PublicPlayer {
   readonly id: string; readonly nickname: string; readonly seatIndex: number; readonly colour: Colour;
+  /**
+   * Present only on an automated seat. Omitted for people, so a game without
+   * bots serialises exactly as it did before the field existed and a client
+   * built against the older schema is unaffected by it.
+   */
+  readonly kind?: 'HUMAN' | 'BOT';
   readonly resourceCardCount: number; readonly developmentCardCount: number; readonly playedKnights: number;
   readonly remainingPieces: { readonly roads: number; readonly settlements: number; readonly cities: number };
   readonly publicPoints: number;

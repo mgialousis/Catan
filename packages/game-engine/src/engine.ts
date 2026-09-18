@@ -14,7 +14,7 @@ export type EngineEffect =
   | { type: 'DICE'; dice: readonly [number, number] }
   | { type: 'AWARD_CHANGED'; award: 'longestRoad' | 'largestArmy'; holderPlayerId: string | null; size: number };
 export interface Transition { state: CanonicalState; effects: readonly EngineEffect[]; randomDraws: readonly RandomDraw[]; occurredAt: string }
-export interface InitialPlayer { id: string; nickname: string; seatIndex: number; colour: Colour }
+export interface InitialPlayer { id: string; nickname: string; seatIndex: number; colour: Colour; kind?: 'HUMAN' | 'BOT' }
 export interface NewGame { roomId: string; players: readonly InitialPlayer[]; turnLimitSeconds?: null | 60 | 120 | 180 }
 
 function validateContext(context: EngineContext): void { if (!Number.isFinite(Date.parse(context.now))) throw new Error('Explicit server time required'); }
@@ -26,6 +26,10 @@ export function createGame(input: NewGame, context: EngineContext): Transition {
   requireRule(new Set(players.map(p => p.id)).size === players.length && new Set(players.map(p => p.seatIndex)).size === players.length && new Set(players.map(p => p.colour)).size === players.length, 'INVALID_PAYLOAD');
   requireRule(players.every(p => UUID.test(p.id) && Number.isInteger(p.seatIndex) && p.seatIndex >= 0 && p.seatIndex < 4 && ['RED', 'BLUE', 'WHITE', 'ORANGE'].includes(p.colour)), 'INVALID_PAYLOAD');
   requireRule(players.every(p => typeof p.nickname === 'string' && [...p.nickname].length >= 2 && [...p.nickname].length <= 160 && !/[\u0000-\u001f\u007f]/u.test(p.nickname)), 'INVALID_PAYLOAD');
+  requireRule(players.every(p => p.kind === undefined || p.kind === 'HUMAN' || p.kind === 'BOT'), 'INVALID_PAYLOAD');
+  // A practice game must keep at least one person in it; an entirely automated
+  // table has nobody to play it and nobody to end it.
+  requireRule(players.some(p => (p.kind ?? 'HUMAN') === 'HUMAN'), 'INVALID_PAYLOAD');
   const random = new RecordedRandom(context.random), board = generateBoard(random);
   const first = random.int(players.length, 'first-seat'), order = [...players.slice(first), ...players.slice(0, first)].map(p => p.id);
   const deck: DevelopmentCard[] = [];
@@ -36,7 +40,9 @@ export function createGame(input: NewGame, context: EngineContext): Transition {
     roomId: input.roomId, version: 0, rulesVersion: RULES_VERSION, stateSchemaVersion: 1, protocolVersion: 1,
     publicState: {
       board: structuredClone(board) as WorkingState['publicState']['board'], roads: {}, buildings: {}, robberHexId: (Object.keys(board.hexes) as HexId[]).find(id => board.hexes[id]!.terrain === 'DESERT')!,
-      players: Object.fromEntries(players.map(p => [p.id, { ...p, resourceCardCount: 0, developmentCardCount: 0, playedKnights: 0, remainingPieces: { roads: 15, settlements: 5, cities: 4 }, publicPoints: 0 }])),
+      // Destructured so a human seat carries no kind key at all, rather than one
+      // set to undefined: a game without bots must serialise byte for byte as before.
+      players: Object.fromEntries(players.map(({ kind, ...p }) => [p.id, { ...p, ...(kind === 'BOT' ? { kind } : {}), resourceCardCount: 0, developmentCardCount: 0, playedKnights: 0, remainingPieces: { roads: 15, settlements: 5, cities: 4 }, publicPoints: 0 }])),
       phase: 'SETUP_SETTLEMENT', phaseId: random.id('phase'), turnNumber: 0, activePlayerId: order[0]!, requiredPlayerIds: [order[0]!], hasRolled: false, developmentCardPlayedThisTurn: false,
       dice: null, trades: {}, longestRoad: { holderPlayerId: null, size: 0 }, largestArmy: { holderPlayerId: null, size: 0 }, pauseReasons: [], turnDeadline: null, discardDeadlines: {}, winnerPlayerId: null, winnerVictoryPointCardIds: [], finalPoints: {},
     },

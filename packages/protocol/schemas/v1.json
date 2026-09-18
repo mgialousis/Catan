@@ -2160,6 +2160,13 @@
         },
         "ready": {
           "type": "boolean"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "HUMAN",
+            "BOT"
+          ]
         }
       },
       "required": [
@@ -2277,6 +2284,13 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 20
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "HUMAN",
+            "BOT"
+          ]
         }
       },
       "required": [

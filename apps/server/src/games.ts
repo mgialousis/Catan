@@ -213,9 +213,14 @@ export class Games {
     });
   }
   private async now(db: PoolClient): Promise<string> { return (await db.query('SELECT clock_timestamp() AS time')).rows[0].time.toISOString(); }
+  /**
+   * Presence is about people. An automated seat holds no socket, so counting it
+   * would pause a practice game the moment it started and never let it resume.
+   */
   private requiredOnline(state: CanonicalState): boolean {
     const online = this.rooms.online(state.roomId);
-    return online.size > 0 && state.publicState.requiredPlayerIds.every(id => online.has(id));
+    const people = state.publicState.requiredPlayerIds.filter(id => state.publicState.players[id]?.kind !== 'BOT');
+    return online.size > 0 && people.every(id => online.has(id));
   }
   private sessionResult(previous: CanonicalState, reasons: PauseReason[], now: string, type: string, actor: string | null = null, freezeAt = now): Transition {
     const state = pauseState(previous, reasons, freezeAt, engineContext().random);
