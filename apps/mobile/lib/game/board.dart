@@ -1610,25 +1610,28 @@ class _IslandArtwork {
       c.clipPath(path);
       c.drawPath(
         path,
-        Paint()..color = const Color(0xfff7e2a8).withValues(alpha: 0.2),
+        Paint()..color = const Color(0xff1fd6cb).withValues(alpha: 0.16),
       );
-      c.drawPath(
-        path,
-        Paint()
-          ..color = const Color(0xfff3d17a)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 14
-          ..strokeJoin = StrokeJoin.round,
-      );
+      // Banded dark-then-bright, because no single colour reads on all six
+      // terrains: a light ring disappears into the desert and the fields, a
+      // dark one into the forest. The dark band backs the bright one so the
+      // pair stays legible on any of them. Cyan is nobody's player colour.
+      for (final band in [
+        (18.0, const Color(0xcc07343a)),
+        (11.0, const Color(0xff1fd6cb)),
+        (4.0, const Color(0xffe6fffb)),
+      ]) {
+        final (width, colour) = band;
+        c.drawPath(
+          path,
+          Paint()
+            ..color = colour
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = width
+            ..strokeJoin = StrokeJoin.round,
+        );
+      }
       c.restore();
-      c.drawPath(
-        path,
-        Paint()
-          ..color = Colors.white.withValues(alpha: 0.65)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5
-          ..strokeJoin = StrokeJoin.round,
-      );
     }
   }
 
