@@ -12,7 +12,7 @@ import type { AppConfig } from './config.js';
  * out ahead of the migration. Drop the older entry once every environment has
  * moved past it.
  */
-const SUPPORTED_SCHEMA_VERSIONS = [1, 2];
+const SUPPORTED_SCHEMA_VERSIONS = [2, 3];
 
 export class Database {
   readonly pool: Pool;

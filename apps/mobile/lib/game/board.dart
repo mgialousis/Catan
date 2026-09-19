@@ -23,8 +23,12 @@ import 'model.dart';
 const playerColours = {
   'RED': Color(0xffbd493d),
   'BLUE': Color(0xff3276ae),
-  'WHITE': Color(0xffeee4d0),
   'ORANGE': Color(0xffdf942d),
+  'PURPLE': Color(0xff7d4ea3),
+  'BLACK': Color(0xff32383d),
+  // Still rendered for games that already use it, but no longer handed out:
+  // ivory pieces sit badly against the board's own rims and number tokens.
+  'WHITE': Color(0xffeee4d0),
 };
 
 const _oceanDeep = Color(0xff14567c);
@@ -212,11 +216,16 @@ class IslandBoard extends StatefulWidget {
     this.targets = const {},
     this.selected,
     required this.onTarget,
+    this.menu,
   });
   final GameSnapshot snapshot;
   final Set<String> targets;
   final String? selected;
   final ValueChanged<String> onTarget;
+
+  /// Optional control placed beside the title, so the table's own actions sit
+  /// with the board rather than scattered through the panels below it.
+  final Widget? menu;
   @override
   State<IslandBoard> createState() => _IslandBoardState();
 }
@@ -315,6 +324,7 @@ class _IslandBoardState extends State<IslandBoard>
           onPressed: () => transform.value = Matrix4.identity(),
           icon: const Icon(Icons.center_focus_strong),
         ),
+        ?widget.menu,
       ];
       final island = ClipRRect(
         borderRadius: BorderRadius.circular(24),
@@ -1590,6 +1600,38 @@ class _IslandArtwork {
 
   // -- selection feedback ---------------------------------------------------
 
+  /// Rings the hexes the last roll paid out from. It belongs to the feedback
+  /// layer because it changes on every roll, while the terrain beneath it does
+  /// not and stays baked.
+  void producing(Canvas c) {
+    for (final id in s.producingHexes) {
+      final path = Path()..addPolygon(_hexPoints(s, id), true);
+      c.save();
+      c.clipPath(path);
+      c.drawPath(
+        path,
+        Paint()..color = const Color(0xfff7e2a8).withValues(alpha: 0.2),
+      );
+      c.drawPath(
+        path,
+        Paint()
+          ..color = const Color(0xfff3d17a)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 14
+          ..strokeJoin = StrokeJoin.round,
+      );
+      c.restore();
+      c.drawPath(
+        path,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.65)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5
+          ..strokeJoin = StrokeJoin.round,
+      );
+    }
+  }
+
   void targets(
     Canvas c,
     Set<String> targets,
@@ -1741,6 +1783,7 @@ class IslandPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final artwork = _IslandArtwork(s);
+    artwork.producing(canvas);
     artwork.hover(canvas, hovered);
     // Read the live value on each tick; capturing it in the constructor freezes
     // the effect while still scheduling all the animation's repaints.
@@ -1795,6 +1838,9 @@ class IslandPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant IslandPainter oldDelegate) =>
       !_sameJson(oldDelegate.s.board, s.board) ||
+      // The board itself never changes mid-game, so a new roll would otherwise
+      // never reach this layer.
+      !setEquals(oldDelegate.s.producingHexes, s.producingHexes) ||
       !setEquals(oldDelegate.targets, targets) ||
       oldDelegate.selected != selected ||
       oldDelegate.hovered != hovered ||

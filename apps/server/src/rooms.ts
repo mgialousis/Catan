@@ -9,7 +9,10 @@ import { safeError } from './errors.js';
 
 type Row = Record<string, any>;
 type Ack = { commandId: string; status: 'ACCEPTED' | 'REJECTED'; scope: 'ROOM'; roomId: string | null; version: number | null; serverTime: string; result?: { playerId?: string; invitationCode?: string }; error?: ReturnType<typeof safeError> };
-const colours = ['RED', 'BLUE', 'WHITE', 'ORANGE'];
+// Handed out in this order. White is still permitted for games that already
+// use it, but it reads badly against the board's ivory pieces and rims, so it
+// is never assigned to a new seat.
+const colours = ['RED', 'BLUE', 'ORANGE', 'PURPLE'];
 /** Seat names for automated players, one per non-host seat. */
 const BOT_NAMES = ['Ada', 'Bo', 'Cy'];
 
@@ -213,10 +216,19 @@ export class Rooms {
     let result: Ack['result'];
     switch (command.type) {
       case 'SET_PROFILE': {
+        // A profile edit is your own unless it names a seat, and the only seat
+        // anyone may edit for someone else is an automated one they host.
+        // Nobody gets to rename or recolour another person.
+        const targetId = (payload.playerId as string | undefined) ?? own.id;
+        const target = roster.find(p => p.id === targetId);
+        if (!target) throw new LobbyError('FORBIDDEN');
+        if (target.id !== own.id && !(target.kind === 'BOT' && room.host_player_id === own.id)) {
+          throw new LobbyError('FORBIDDEN');
+        }
         const name = nickname(payload.nickname as string);
-        if (roster.some(p => p.id !== own.id && p.nickname_key === name.key)) throw new LobbyError('NAME_TAKEN');
-        if (roster.some(p => p.id !== own.id && p.colour === payload.colour)) throw new LobbyError('COLOUR_TAKEN');
-        await db.query('UPDATE app.players SET nickname=$1,nickname_key=$2,colour=$3 WHERE id=$4', [name.name, name.key, payload.colour, own.id]);
+        if (roster.some(p => p.id !== target.id && p.nickname_key === name.key)) throw new LobbyError('NAME_TAKEN');
+        if (roster.some(p => p.id !== target.id && p.colour === payload.colour)) throw new LobbyError('COLOUR_TAKEN');
+        await db.query('UPDATE app.players SET nickname=$1,nickname_key=$2,colour=$3 WHERE id=$4', [name.name, name.key, payload.colour, target.id]);
         reset = true; break;
       }
       case 'SET_READY':

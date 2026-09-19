@@ -131,6 +131,10 @@ class _GameScreenState extends ConsumerState<GameScreen>
   static const _announced = {'RESOURCES_DISCARDED', 'RESOURCE_STOLEN'};
   int? _announcedThrough;
 
+  /// Whether the full log is open. Collapsed by default: the last few lines are
+  /// what a player usually wants, and the rest is history.
+  bool _logOpen = false;
+
   void _announceActivity(GameView next) {
     final snapshot = next.snapshot;
     if (snapshot == null || next.activity.isEmpty) return;
@@ -311,6 +315,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
       final landscape =
           constraints.maxWidth >= 740 && constraints.maxHeight < 600;
       final board = IslandBoard(
+        menu: snapshot.complete ? null : _tableMenu(view, snapshot),
         snapshot: snapshot,
         targets: view.selection == null || view.locked
             ? const {}
@@ -357,36 +362,6 @@ class _GameScreenState extends ConsumerState<GameScreen>
                         as String,
                 discard: snapshot.phase == 'DISCARD_REQUIRED',
               ),
-            ),
-          if (!snapshot.complete)
-            Wrap(
-              spacing: 8,
-              children: [
-                if (widget.isHost)
-                  OutlinedButton.icon(
-                    onPressed: !view.connected || view.pending != null
-                        ? null
-                        : () => _session(
-                            snapshot.paused ? 'RESUME_GAME' : 'PAUSE_GAME',
-                            snapshot,
-                          ),
-                    icon: Icon(
-                      snapshot.paused ? Icons.play_arrow : Icons.pause,
-                    ),
-                    label: Text(snapshot.paused ? 'Resume game' : 'Pause game'),
-                  ),
-                TextButton.icon(
-                  onPressed: !view.connected || view.pending != null
-                      ? null
-                      : () => _leave(snapshot),
-                  icon: const Icon(Icons.logout, size: 18),
-                  label: Text(
-                    snapshot.soloPractice
-                        ? 'Leave practice game'
-                        : 'Leave game',
-                  ),
-                ),
-              ],
             ),
           const SizedBox(height: 12),
           if (!landscape) board,
@@ -941,18 +916,34 @@ class _GameScreenState extends ConsumerState<GameScreen>
                             Icons.star_outline,
                             '${player['publicPoints']}',
                             emphasis: true,
+                            onTap: () => _points(s, player),
                           ),
                           _pill(
                             Icons.style_outlined,
                             '${player['resourceCardCount']}',
+                            onTap: () => _explain(
+                              Icons.style_outlined,
+                              'Resource cards',
+                              '${player['nickname']} is holding ${player['resourceCardCount']} resource cards. Everyone can see how many; only their owner sees which.',
+                            ),
                           ),
                           _pill(
                             Icons.credit_card,
                             '${player['developmentCardCount']}',
+                            onTap: () => _explain(
+                              Icons.credit_card,
+                              'Development cards',
+                              '${player['nickname']} is holding ${player['developmentCardCount']} development cards that have not been played. Their kinds stay hidden until they are.',
+                            ),
                           ),
                           _pill(
                             Icons.shield_outlined,
                             '${player['playedKnights']}',
+                            onTap: () => _explain(
+                              Icons.shield_outlined,
+                              'Knights played',
+                              '${player['nickname']} has played ${player['playedKnights']} knights. Three or more, and the most of anyone, takes Largest Army and its two points.',
+                            ),
                           ),
                         ],
                       ),
@@ -989,8 +980,96 @@ class _GameScreenState extends ConsumerState<GameScreen>
     ),
   );
 
-  Widget _pill(IconData icon, String value, {bool emphasis = false}) =>
-      HudStat(icon, value, emphasis: emphasis);
+  Widget _pill(
+    IconData icon,
+    String value, {
+    bool emphasis = false,
+    VoidCallback? onTap,
+  }) => HudStat(icon, value, emphasis: emphasis, onTap: onTap);
+
+  /// What a number on the roster actually means. Every stat explains itself, so
+  /// reading the table never depends on already knowing the rules.
+  Future<void> _explain(IconData icon, String title, String body) =>
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: Icon(icon, color: hudTeal),
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+
+  /// How a score adds up. Hidden victory-point cards appear only in your own
+  /// breakdown, because nobody else is entitled to know about them.
+  Future<void> _points(GameSnapshot s, JsonMap player) {
+    final id = player['id'] as String;
+    final rows = s.pointsBreakdown(id);
+    final mine = id == s.playerId;
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.star_outline, color: hudGold),
+        title: Text(mine ? 'Your points' : "${player['nickname']}'s points"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (rows.isEmpty)
+              const Text('Nothing scoring yet.')
+            else
+              for (final row in rows)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(row.$1)),
+                      Text(
+                        '${row.$2}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+            const Divider(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    mine ? 'Total, including hidden' : 'Visible total',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(
+                  '${mine ? s.hand['totalPoints'] : player['publicPoints']}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            if (!mine)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Victory point cards stay hidden, so a rival may be closer than this shows.',
+                  style: TextStyle(fontSize: 12, color: hudMuted),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _hand(GameView view, GameSnapshot s) => HudPanel(
     child: Column(
@@ -1122,36 +1201,73 @@ class _GameScreenState extends ConsumerState<GameScreen>
     ),
   );
 
-  Widget _activity(GameView view, GameSnapshot s) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'What happened',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => ref.read(gameProvider.notifier).loadHistory(),
-            child: const Text('Load earlier activity'),
-          ),
-          if (view.activity.isEmpty)
-            const Text('Nothing yet.', style: TextStyle(fontSize: 12))
-          else
-            for (final entry in view.activity.reversed)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  '· ${entry.describe(s)}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-        ],
+  /// The log grows without limit, so it shows the last few by default and the
+  /// rest scroll inside a bounded box rather than pushing the page ever longer.
+  Widget _activity(GameView view, GameSnapshot s) {
+    const collapsed = 4;
+    final entries = view.activity.reversed.toList();
+    final overflowing = entries.length > collapsed;
+    final shown = _logOpen ? entries : entries.take(collapsed).toList();
+    Widget line(ActivityEntry entry) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(
+        '· ${entry.describe(s)}',
+        style: const TextStyle(fontSize: 12),
       ),
-    ),
-  );
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'What happened',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (overflowing)
+                  TextButton(
+                    onPressed: () => setState(() => _logOpen = !_logOpen),
+                    child: Text(
+                      _logOpen ? 'Show less' : 'Show all ${entries.length}',
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (entries.isEmpty)
+              const Text('Nothing yet.', style: TextStyle(fontSize: 12))
+            else if (_logOpen)
+              ConstrainedBox(
+                // Bounded and scrollable: a long match must not turn this panel
+                // into most of the page.
+                constraints: const BoxConstraints(maxHeight: 220),
+                child: Scrollbar(
+                  child: ListView(
+                    key: const Key('activity-scroll'),
+                    primary: false,
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    children: [for (final entry in shown) line(entry)],
+                  ),
+                ),
+              )
+            else
+              for (final entry in shown) line(entry),
+            if (_logOpen)
+              TextButton(
+                onPressed: () => ref.read(gameProvider.notifier).loadHistory(),
+                child: const Text('Load earlier activity'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _result(GameSnapshot s) {
     final winner = s.public['winnerPlayerId'] as String?;
@@ -1223,6 +1339,42 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
   /// Leaving is destructive and irreversible, so it always asks first, and it
   /// asks in the terms of the table you are actually at.
+  /// Pausing and leaving are things you do to the table, not moves in the game,
+  /// so they live together beside the board rather than among the panels.
+  Widget _tableMenu(GameView view, GameSnapshot s) {
+    final busy = !view.connected || view.pending != null;
+    return PopupMenuButton<String>(
+      tooltip: 'Table options',
+      icon: const Icon(Icons.settings_outlined),
+      onSelected: (value) => value == 'LEAVE'
+          ? _leave(s)
+          : _session(s.paused ? 'RESUME_GAME' : 'PAUSE_GAME', s),
+      itemBuilder: (context) => [
+        if (widget.isHost)
+          PopupMenuItem(
+            value: 'PAUSE',
+            enabled: !busy,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(s.paused ? Icons.play_arrow : Icons.pause),
+              title: Text(s.paused ? 'Resume game' : 'Pause game'),
+            ),
+          ),
+        PopupMenuItem(
+          value: 'LEAVE',
+          enabled: !busy,
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.logout),
+            title: Text(s.soloPractice ? 'Leave practice game' : 'Leave game'),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _leave(GameSnapshot s) async {
     // A practice table has nobody else to consider, so leaving simply ends it.
     if (s.soloPractice) {

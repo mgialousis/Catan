@@ -182,6 +182,53 @@ class GameSnapshot {
   /// game never leaves you guessing which opponents are people.
   bool isBot(String? id) => id != null && players[id]?['kind'] == 'BOT';
 
+  /// Hexes the last roll paid out from: their number came up, they grow
+  /// something, and the robber is not sitting on them. Empty until a roll.
+  Set<String> get producingHexes {
+    final roll = public['dice'] as List?;
+    if (roll == null || public['hasRolled'] != true) return const {};
+    final total = (roll[0] as int) + (roll[1] as int);
+    if (total == 7) return const {};
+    return {
+      for (final entry in hexes.entries)
+        if (entry.value['number'] == total &&
+            entry.value['terrain'] != 'DESERT' &&
+            entry.key != public['robberHexId'])
+          entry.key,
+    };
+  }
+
+  /// How a player's visible points add up. Hidden victory-point cards are only
+  /// ever counted for yourself, since nobody else may see them.
+  List<(String, int)> pointsBreakdown(String id) {
+    var settlements = 0, cities = 0;
+    for (final building in buildings.values.cast<JsonMap>()) {
+      if (building['ownerPlayerId'] != id) continue;
+      if (building['type'] == 'CITY') {
+        cities++;
+      } else {
+        settlements++;
+      }
+    }
+    final rows = <(String, int)>[
+      if (settlements > 0)
+        ('$settlements settlement${settlements == 1 ? '' : 's'}', settlements),
+      if (cities > 0) ('$cities cit${cities == 1 ? 'y' : 'ies'}', cities * 2),
+      if (public['longestRoad']['holderPlayerId'] == id) ('Longest road', 2),
+      if (public['largestArmy']['holderPlayerId'] == id) ('Largest army', 2),
+    ];
+    if (id == playerId) {
+      final hidden = cards.where((c) => c['type'] == 'VICTORY_POINT').length;
+      if (hidden > 0) {
+        rows.add((
+          '$hidden victory point card${hidden == 1 ? '' : 's'}',
+          hidden,
+        ));
+      }
+    }
+    return rows;
+  }
+
   /// A table where every other seat is automated, so leaving it affects nobody.
   /// Not the same as "has bots": a shared game gains bots when someone walks
   /// out and the rest carry on without them.

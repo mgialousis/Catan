@@ -235,12 +235,32 @@ class HudHeading extends StatelessWidget {
 /// Compact statistic. The icon carries the meaning and the number carries the
 /// value, so these stay legible at small sizes and large text scales alike.
 class HudStat extends StatelessWidget {
-  const HudStat(this.icon, this.value, {super.key, this.emphasis = false});
+  const HudStat(
+    this.icon,
+    this.value, {
+    super.key,
+    this.emphasis = false,
+    this.onTap,
+  });
   final IconData icon;
   final String value;
   final bool emphasis;
+
+  /// Makes the stat explain itself when tapped.
+  final VoidCallback? onTap;
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) {
+    final body = _body();
+    return onTap == null
+        ? body
+        : InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(9),
+            child: body,
+          );
+  }
+
+  Widget _body() => Container(
     margin: const EdgeInsets.only(left: 6),
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     decoration: BoxDecoration(

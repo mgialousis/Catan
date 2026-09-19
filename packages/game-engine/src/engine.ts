@@ -24,7 +24,7 @@ export function createGame(input: NewGame, context: EngineContext): Transition {
   requireRule(input.turnLimitSeconds === undefined || [null, 60, 120, 180].includes(input.turnLimitSeconds), 'INVALID_PAYLOAD');
   const players = [...input.players].sort((a, b) => a.seatIndex - b.seatIndex);
   requireRule(new Set(players.map(p => p.id)).size === players.length && new Set(players.map(p => p.seatIndex)).size === players.length && new Set(players.map(p => p.colour)).size === players.length, 'INVALID_PAYLOAD');
-  requireRule(players.every(p => UUID.test(p.id) && Number.isInteger(p.seatIndex) && p.seatIndex >= 0 && p.seatIndex < 4 && ['RED', 'BLUE', 'WHITE', 'ORANGE'].includes(p.colour)), 'INVALID_PAYLOAD');
+  requireRule(players.every(p => UUID.test(p.id) && Number.isInteger(p.seatIndex) && p.seatIndex >= 0 && p.seatIndex < 4 && ['RED', 'BLUE', 'WHITE', 'ORANGE', 'PURPLE', 'BLACK'].includes(p.colour)), 'INVALID_PAYLOAD');
   requireRule(players.every(p => typeof p.nickname === 'string' && [...p.nickname].length >= 2 && [...p.nickname].length <= 160 && !/[\u0000-\u001f\u007f]/u.test(p.nickname)), 'INVALID_PAYLOAD');
   requireRule(players.every(p => p.kind === undefined || p.kind === 'HUMAN' || p.kind === 'BOT'), 'INVALID_PAYLOAD');
   // A practice game must keep at least one person in it; an entirely automated

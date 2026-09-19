@@ -578,8 +578,10 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
     const colours = {
       'RED': Color(0xffac3c35),
       'BLUE': Color(0xff2965a1),
-      'WHITE': Color(0xffe0ddd2),
       'ORANGE': Color(0xffd77622),
+      'PURPLE': Color(0xff7d4ea3),
+      'BLACK': Color(0xff32383d),
+      'WHITE': Color(0xffe0ddd2),
     };
     final colour = player['colour'] as String? ?? 'WHITE';
     final you = player['id'] == lobby.playerId;
@@ -605,26 +607,40 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
             ? 'online'
             : 'offline'}',
       ),
-      trailing: Icon(
-        player['ready'] == true
-            ? Icons.check_circle
-            : Icons.radio_button_unchecked,
-        semanticLabel: player['ready'] == true ? 'Ready' : 'Not ready',
-        color: player['ready'] == true ? const Color(0xff256f61) : null,
-      ),
+      trailing: bot && lobby.isHost
+          ? IconButton(
+              tooltip: 'Rename or recolour this bot',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: lobby.pending
+                  ? null
+                  : () => _editProfile(lobby, player),
+            )
+          : Icon(
+              player['ready'] == true
+                  ? Icons.check_circle
+                  : Icons.radio_button_unchecked,
+              semanticLabel: player['ready'] == true ? 'Ready' : 'Not ready',
+              color: player['ready'] == true ? const Color(0xff256f61) : null,
+            ),
     );
   }
 
-  Future<void> _editProfile(LobbyView lobby) async {
-    final own = lobby.own;
+  /// Edits a seat. [seat] defaults to your own; the host may also pass a bot,
+  /// which is the only seat anybody edits on someone else's behalf.
+  Future<void> _editProfile(
+    LobbyView lobby, [
+    Map<String, dynamic>? seat,
+  ]) async {
+    final own = seat ?? lobby.own;
     if (own == null) return;
+    final bot = own['kind'] == 'BOT';
     final name = TextEditingController(text: own['nickname'] as String);
     var colour = own['colour'] as String;
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Your place at the table'),
+          title: Text(bot ? 'This bot' : 'Your place at the table'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -637,17 +653,27 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
                 DropdownButtonFormField<String>(
                   initialValue: colour,
                   decoration: const InputDecoration(labelText: 'Piece colour'),
-                  items: ['RED', 'BLUE', 'WHITE', 'ORANGE']
-                      .map(
-                        (c) => DropdownMenuItem(
-                          value: c,
-                          enabled: !lobby.players.any(
-                            (p) => p['id'] != own['id'] && p['colour'] == c,
-                          ),
-                          child: Text(c.toLowerCase()),
-                        ),
-                      )
-                      .toList(),
+                  // White is left out on purpose: it reads badly against the
+                  // board's ivory rims. Games already using it keep it.
+                  items:
+                      [
+                            'RED',
+                            'BLUE',
+                            'ORANGE',
+                            'PURPLE',
+                            'BLACK',
+                            if (colour == 'WHITE') 'WHITE',
+                          ]
+                          .map(
+                            (c) => DropdownMenuItem(
+                              value: c,
+                              enabled: !lobby.players.any(
+                                (p) => p['id'] != own['id'] && p['colour'] == c,
+                              ),
+                              child: Text(c.toLowerCase()),
+                            ),
+                          )
+                          .toList(),
                   onChanged: (value) => setState(() => colour = value!),
                 ),
               ],
@@ -670,6 +696,7 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
       await ref.read(lobbyProvider.notifier).command('SET_PROFILE', {
         'nickname': name.text.trim(),
         'colour': colour,
+        if (seat != null) 'playerId': own['id'],
       });
     }
     // The dialog's reverse animation still holds its TextField until the next frame.

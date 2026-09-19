@@ -10,6 +10,13 @@ import 'game_model_test.dart' show uiProtocol, uiSnapshot;
 import 'game_test.dart' show FakePort;
 
 void main() {
+  /// Pause and leave live behind the table menu now, so a test has to open it
+  /// exactly as a player would.
+  Future<void> openMenu(WidgetTester t) async {
+    await t.tap(find.byIcon(Icons.settings_outlined));
+    await t.pumpAndSettle();
+  }
+
   test(
     'countdown uses elapsed time and stale server samples cannot refund time',
     () {
@@ -92,6 +99,9 @@ void main() {
       port.emit('connected', true);
       port.emit('snapshot', uiSnapshot('paused'));
       await t.pumpAndSettle();
+      // The table's own actions live behind one control beside the board.
+      expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+      await openMenu(t);
       expect(find.text('Resume game'), host ? findsOneWidget : findsNothing);
       // Everyone can reach the exit; what it offers depends on who they are.
       expect(find.text('Leave game'), findsOneWidget);
@@ -99,6 +109,9 @@ void main() {
         await t.tap(find.text('Resume game'));
         await t.pump();
         expect(port.commands.single['type'], 'RESUME_GAME');
+      } else {
+        await t.tapAt(const Offset(5, 5));
+        await t.pumpAndSettle();
       }
       await t.pumpWidget(const SizedBox());
     });
@@ -142,6 +155,7 @@ void main() {
 
   testWidgets('a practice game is left in its own terms', (t) async {
     final port = await show(t, withBots('paused'));
+    await openMenu(t);
     expect(find.text('Leave practice game'), findsOneWidget);
     expect(find.text('Leave game'), findsNothing);
     await t.tap(find.text('Leave practice game'));
@@ -152,6 +166,7 @@ void main() {
     await t.tap(find.text('Keep playing'));
     await t.pumpAndSettle();
     expect(port.commands, isEmpty);
+    await openMenu(t);
     await t.tap(find.text('Leave practice game'));
     await t.pumpAndSettle();
     await t.tap(find.text('Leave practice game').last);
@@ -162,6 +177,7 @@ void main() {
 
   testWidgets('a guest can leave a shared game without ending it', (t) async {
     final port = await show(t, uiSnapshot('paused'), isHost: false);
+    await openMenu(t);
     expect(find.text('Leave game'), findsOneWidget);
     await t.tap(find.text('Leave game'));
     await t.pumpAndSettle();
@@ -171,6 +187,7 @@ void main() {
     await t.tap(find.text('Keep playing'));
     await t.pumpAndSettle();
     expect(port.commands, isEmpty);
+    await openMenu(t);
     await t.tap(find.text('Leave game'));
     await t.pumpAndSettle();
     await t.tap(find.text('Leave the table'));
@@ -181,6 +198,7 @@ void main() {
 
   testWidgets('the host can leave without ending the game too', (t) async {
     final port = await show(t, uiSnapshot('paused'));
+    await openMenu(t);
     await t.tap(find.text('Leave game'));
     await t.pumpAndSettle();
     // Both exits are offered, and they are not the same thing.
@@ -240,11 +258,13 @@ void main() {
       port.emit('connected', true);
       port.emit('snapshot', saved);
       await t.pumpAndSettle();
+      await openMenu(t);
       await t.tap(find.text('Leave game'));
       await t.pumpAndSettle();
       await t.tap(find.text('Keep playing'));
       await t.pumpAndSettle();
       expect(port.commands, isEmpty);
+      await openMenu(t);
       await t.tap(find.text('Leave game'));
       await t.pumpAndSettle();
       await t.tap(find.text('End game for everyone'));

@@ -21,7 +21,7 @@ export interface ServerHello { protocolVersion: 1; serverTime: string; heartbeat
 export type VertexId = `v-${string}`;
 export type EdgeId = `e-${string}`;
 export type HexId = `h-${string}`;
-export type Colour = 'RED' | 'BLUE' | 'WHITE' | 'ORANGE';
+export type Colour = 'RED' | 'BLUE' | 'WHITE' | 'ORANGE' | 'PURPLE' | 'BLACK';
 export interface Board {
   readonly topologyVersion: 1;
   readonly hexes: Readonly<Record<HexId, { readonly q: number; readonly r: number; readonly terrain: 'HILLS' | 'FOREST' | 'PASTURE' | 'FIELDS' | 'MOUNTAINS' | 'DESERT'; readonly number: number | null; readonly vertexIds: readonly VertexId[] }>>;
