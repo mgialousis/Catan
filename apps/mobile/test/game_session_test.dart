@@ -160,16 +160,57 @@ void main() {
     await t.pumpWidget(const SizedBox());
   });
 
-  testWidgets('a guest is told why they cannot end a shared game', (t) async {
+  testWidgets('a guest can leave a shared game without ending it', (t) async {
     final port = await show(t, uiSnapshot('paused'), isHost: false);
     expect(find.text('Leave game'), findsOneWidget);
     await t.tap(find.text('Leave game'));
     await t.pumpAndSettle();
-    expect(find.text('Only the host can end this game'), findsOneWidget);
+    expect(find.text('Leave this game?'), findsOneWidget);
+    // A guest is never offered the power to end someone else's game.
+    expect(find.text('End game for everyone'), findsNothing);
     await t.tap(find.text('Keep playing'));
     await t.pumpAndSettle();
-    // An explanation, never a silent no-op that looks like a failure.
     expect(port.commands, isEmpty);
+    await t.tap(find.text('Leave game'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Leave the table'));
+    await t.pump();
+    expect(port.commands.single['type'], 'LEAVE_GAME');
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the host can leave without ending the game too', (t) async {
+    final port = await show(t, uiSnapshot('paused'));
+    await t.tap(find.text('Leave game'));
+    await t.pumpAndSettle();
+    // Both exits are offered, and they are not the same thing.
+    expect(find.text('End game for everyone'), findsOneWidget);
+    expect(find.text('Leave the table'), findsOneWidget);
+    await t.tap(find.text('Leave the table'));
+    await t.pump();
+    expect(port.commands.single['type'], 'LEAVE_GAME');
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('an empty seat asks the table to decide', (t) async {
+    final snapshot = uiSnapshot('paused');
+    final players = snapshot['publicState']['players'] as Map;
+    final me = snapshot['privateState']['playerId'];
+    final gone = players.keys.firstWhere((id) => id != me);
+    (players[gone] as Map)['kind'] = 'VACANT';
+    (snapshot['publicState']['pauseReasons'] as List).add('SEAT_VACANT');
+    final port = await show(t, snapshot);
+    final name = (players[gone] as Map)['nickname'];
+    expect(find.textContaining('$name left the game.'), findsOneWidget);
+    // The generic pause banner steps aside: this needs a decision, not a status.
+    expect(
+      find.textContaining('The host can resume when required players'),
+      findsNothing,
+    );
+    await t.tap(find.text('Let a bot take over'));
+    await t.pump();
+    expect(port.commands.single['type'], 'REPLACE_WITH_BOT');
+    expect(port.commands.single['payload'], {'playerId': gone});
     await t.pumpWidget(const SizedBox());
   });
 

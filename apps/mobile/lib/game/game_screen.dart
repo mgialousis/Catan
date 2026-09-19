@@ -327,7 +327,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
         children: [
           _header(snapshot),
           if (view.message != null) _banner(view.message!, Icons.info_outline),
-          if (snapshot.paused)
+          if (snapshot.vacantSeats.isNotEmpty) _vacancies(view, snapshot),
+          if (snapshot.paused && snapshot.vacantSeats.isEmpty)
             _banner(
               (snapshot.public['pauseReasons'] as List).any(
                     (r) => r != 'DISCONNECTED',
@@ -380,7 +381,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
                       : () => _leave(snapshot),
                   icon: const Icon(Icons.logout, size: 18),
                   label: Text(
-                    snapshot.hasBots ? 'Leave practice game' : 'Leave game',
+                    snapshot.soloPractice
+                        ? 'Leave practice game'
+                        : 'Leave game',
                   ),
                 ),
               ],
@@ -539,6 +542,57 @@ class _GameScreenState extends ConsumerState<GameScreen>
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// Somebody walked out. The table cannot continue with an empty seat, so this
+  /// asks the people still here to decide rather than leaving them waiting.
+  Widget _vacancies(GameView view, GameSnapshot s) {
+    final seats = s.vacantSeats;
+    final names = seats.map((p) => p['nickname'] as String).join(', ');
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: HudPanel(
+        accent: hudGold,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              seats.length == 1
+                  ? '$names left the game.'
+                  : '$names left the game.',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'The table is paused until the empty seats are filled. A bot can '
+              'take over a seat with its cards and position, or you can leave too.',
+              style: TextStyle(fontSize: 13, color: hudMuted),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final seat in seats)
+                  FilledButton.icon(
+                    onPressed: !view.connected || view.pending != null
+                        ? null
+                        : () => _controller.command('REPLACE_WITH_BOT', {
+                            'playerId': seat['id'],
+                          }, s),
+                    icon: const Icon(Icons.smart_toy_outlined, size: 18),
+                    label: Text(
+                      seats.length == 1
+                          ? 'Let a bot take over'
+                          : "Bot for ${seat['nickname']}",
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1170,33 +1224,44 @@ class _GameScreenState extends ConsumerState<GameScreen>
   /// Leaving is destructive and irreversible, so it always asks first, and it
   /// asks in the terms of the table you are actually at.
   Future<void> _leave(GameSnapshot s) async {
-    if (!widget.isHost && !s.hasBots) {
-      // Nothing here can end someone else's game, and the protocol has no way
-      // for one seat to walk out of a live one. Say so rather than offer a
-      // button that quietly does nothing.
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Only the host can end this game'),
-          content: const Text(
-            'You can close the app at any time. The table pauses while you are away and your turn and cards are kept, so you can come back to the same game.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Keep playing'),
-            ),
-          ],
-        ),
-      );
+    // A practice table has nobody else to consider, so leaving simply ends it.
+    if (s.soloPractice) {
+      await _session('ABANDON_GAME', s);
       return;
     }
-    await _session('ABANDON_GAME', s);
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Leave this game?'),
+        content: Text(
+          widget.isHost
+              ? 'Your seat keeps its cards and position, and the others can hand it to a bot to carry on. Ending the game instead stops it for everyone.'
+              : 'Your seat keeps its cards and position, and the others can hand it to a bot to carry on without you.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Keep playing'),
+          ),
+          if (widget.isHost)
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'ABANDON_GAME'),
+              child: const Text('End game for everyone'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'LEAVE_GAME'),
+            child: const Text('Leave the table'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+    await _controller.command(choice, {}, s);
   }
 
   Future<void> _session(String type, GameSnapshot basedOn) async {
     if (type == 'ABANDON_GAME') {
-      final practice = basedOn.hasBots;
+      final practice = basedOn.soloPractice;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(

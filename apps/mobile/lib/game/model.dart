@@ -181,6 +181,19 @@ class GameSnapshot {
   /// Automated seats are labelled everywhere a name is shown, so a practice
   /// game never leaves you guessing which opponents are people.
   bool isBot(String? id) => id != null && players[id]?['kind'] == 'BOT';
+
+  /// A table where every other seat is automated, so leaving it affects nobody.
+  /// Not the same as "has bots": a shared game gains bots when someone walks
+  /// out and the rest carry on without them.
+  bool get soloPractice => players.values.cast<JsonMap>().every(
+    (p) => p['id'] == playerId || p['kind'] == 'BOT',
+  );
+
+  /// Seats whose player left and which nobody has filled yet.
+  List<JsonMap> get vacantSeats => players.values
+      .cast<JsonMap>()
+      .where((p) => p['kind'] == 'VACANT')
+      .toList();
   bool get hasBots => players.values.any((p) => (p as Map)['kind'] == 'BOT');
   List<JsonMap> get incomingTrades => (public['trades'] as Map).values
       .cast<JsonMap>()

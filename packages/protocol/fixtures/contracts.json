@@ -6348,5 +6348,86 @@
       },
       "publicPoints": 0
     }
+  },
+  {
+    "name": "accept LEAVE_GAME",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "22222222-2222-4222-8222-222222222222",
+      "expectedVersion": 3,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "LEAVE_GAME",
+      "payload": {}
+    }
+  },
+  {
+    "name": "reject LEAVE_GAME with a payload",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "22222222-2222-4222-8222-222222222222",
+      "expectedVersion": 3,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "LEAVE_GAME",
+      "payload": {
+        "playerId": "22222222-2222-4222-8222-222222222222"
+      }
+    }
+  },
+  {
+    "name": "accept REPLACE_WITH_BOT",
+    "schema": "gameCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "22222222-2222-4222-8222-222222222222",
+      "expectedVersion": 3,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "REPLACE_WITH_BOT",
+      "payload": {
+        "playerId": "22222222-2222-4222-8222-222222222222"
+      }
+    }
+  },
+  {
+    "name": "reject REPLACE_WITH_BOT without a seat",
+    "schema": "gameCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": "22222222-2222-4222-8222-222222222222",
+      "expectedVersion": 3,
+      "expectedPhaseId": "11111111-1111-4111-8111-111111111111",
+      "type": "REPLACE_WITH_BOT",
+      "payload": {}
+    }
+  },
+  {
+    "name": "accept a vacant seat in the public roster",
+    "schema": "publicPlayer",
+    "valid": true,
+    "value": {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "nickname": "Mira",
+      "seatIndex": 2,
+      "colour": "WHITE",
+      "kind": "VACANT",
+      "resourceCardCount": 3,
+      "developmentCardCount": 0,
+      "playedKnights": 0,
+      "remainingPieces": {
+        "roads": 13,
+        "settlements": 3,
+        "cities": 4
+      },
+      "publicPoints": 2
+    }
   }
 ]

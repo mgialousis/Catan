@@ -244,10 +244,15 @@ class GameController extends Notifier<GameView> {
     JsonMap payload = const {},
     GameSnapshot? basedOn,
   ]) async {
+    // Commands that exist to change the state of the table rather than to play
+    // it, so they must work while it is paused — which is exactly when leaving
+    // and filling an empty seat are needed.
     final sessionCommand = [
       'PAUSE_GAME',
       'RESUME_GAME',
       'ABANDON_GAME',
+      'LEAVE_GAME',
+      'REPLACE_WITH_BOT',
     ].contains(type);
     if (state.snapshot == null ||
         !state.connected ||

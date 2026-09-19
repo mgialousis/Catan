@@ -1934,6 +1934,12 @@
         },
         {
           "$ref": "#/definitions/PLAY_DEVELOPMENT_CARD"
+        },
+        {
+          "$ref": "#/definitions/LEAVE_GAME"
+        },
+        {
+          "$ref": "#/definitions/REPLACE_WITH_BOT"
         }
       ]
     },
@@ -2177,7 +2183,8 @@
           "type": "string",
           "enum": [
             "HUMAN",
-            "BOT"
+            "BOT",
+            "VACANT"
           ]
         }
       },
@@ -2301,7 +2308,8 @@
           "type": "string",
           "enum": [
             "HUMAN",
-            "BOT"
+            "BOT",
+            "VACANT"
           ]
         }
       },
@@ -2853,10 +2861,11 @@
               "MANUAL",
               "DISCONNECTED",
               "RECOVERY",
-              "DATABASE_UNAVAILABLE"
+              "DATABASE_UNAVAILABLE",
+              "SEAT_VACANT"
             ]
           },
-          "maxItems": 4
+          "maxItems": 5
         },
         "turnDeadline": {
           "anyOf": [
@@ -3299,6 +3308,101 @@
       "required": [
         "roomId",
         "playerId"
+      ],
+      "additionalProperties": false
+    },
+    "LEAVE_GAME": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "LEAVE_GAME"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    "REPLACE_WITH_BOT": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "roomId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "expectedVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "expectedPhaseId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "type": {
+          "const": "REPLACE_WITH_BOT"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "playerId": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          "required": [
+            "playerId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "commandId",
+        "roomId",
+        "expectedVersion",
+        "expectedPhaseId",
+        "type",
+        "payload"
       ],
       "additionalProperties": false
     }

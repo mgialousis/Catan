@@ -36,7 +36,7 @@ export interface PublicPlayer {
    * bots serialises exactly as it did before the field existed and a client
    * built against the older schema is unaffected by it.
    */
-  readonly kind?: 'HUMAN' | 'BOT';
+  readonly kind?: 'HUMAN' | 'BOT' | 'VACANT';
   readonly resourceCardCount: number; readonly developmentCardCount: number; readonly playedKnights: number;
   readonly remainingPieces: { readonly roads: number; readonly settlements: number; readonly cities: number };
   readonly publicPoints: number;
@@ -57,7 +57,7 @@ export interface PublicState {
   readonly dice: readonly [number, number] | null; readonly trades: Readonly<Record<string, Trade>>;
   readonly longestRoad: { readonly holderPlayerId: string | null; readonly size: number };
   readonly largestArmy: { readonly holderPlayerId: string | null; readonly size: number };
-  readonly pauseReasons: readonly ('MANUAL' | 'DISCONNECTED' | 'RECOVERY' | 'DATABASE_UNAVAILABLE')[];
+  readonly pauseReasons: readonly ('MANUAL' | 'DISCONNECTED' | 'RECOVERY' | 'DATABASE_UNAVAILABLE' | 'SEAT_VACANT')[];
   readonly turnDeadline: string | null; readonly discardDeadlines: Readonly<Record<string, string>>;
   readonly winnerPlayerId: string | null; readonly winnerVictoryPointCardIds: readonly string[]; readonly finalPoints: Readonly<Record<string, number>>;
 }

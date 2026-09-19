@@ -2,7 +2,7 @@ import { assertClock, advanceClock, pauseState, nextDeadline, timerJobs, dueFor,
 import type { PoolClient } from 'pg';
 import type { Socket } from 'socket.io';
 import { isValid, type Command } from '@island/protocol';
-import { applyCommand, createGame, assertInvariants, projectGame, projectEffects, RuleError, type CanonicalState, type Transition, type InitialPlayer } from '@island/game-engine';
+import { applyCommand, createGame, assertInvariants, projectGame, projectEffects, RuleError, type CanonicalState, type Transition, type InitialPlayer, type WorkingState } from '@island/game-engine';
 import { Database } from './database.js';
 import type { Rooms } from './rooms.js';
 import { canonical, hash, LobbyError } from './lobby-policy.js';
@@ -14,6 +14,11 @@ import { botJobs, botMove, botDifficulty, matchesBotJob, type BotJob } from './b
  * enough that a turn of bots does not feel like waiting for a server.
  */
 const BOT_PACE_MS = 900;
+
+/** Seats whose player has walked out and which nobody has filled yet. */
+function vacantSeats(state: CanonicalState): string[] {
+  return Object.values(state.publicState.players).filter(p => p.kind === 'VACANT').map(p => p.id);
+}
 import { safeError } from './errors.js';
 import { engineContext } from './engine-context.js';
 import { commonView, gameDelta } from './game-delta.js';
@@ -116,11 +121,19 @@ export class Games {
             if (cmd.expectedVersion !== previous.version) throw new RuleError('STALE_VERSION');
             if (cmd.expectedPhaseId !== previous.publicState.phaseId) throw new RuleError('WRONG_PHASE');
             const sessionCommand = ['PAUSE_GAME', 'RESUME_GAME', 'ABANDON_GAME'].includes(cmd.type);
+            // Seat commands belong to whoever is sitting there, not to the host:
+            // walking out of a game is not the host's decision to make for you.
+            const seatCommand = ['LEAVE_GAME', 'REPLACE_WITH_BOT'].includes(cmd.type);
             if (sessionCommand && room.host_player_id !== player.id) throw new RuleError('FORBIDDEN');
-            if (cmd.type !== 'ABANDON_GAME' && (sessionCommand ? timerJobs(previous).some(job => Date.parse(job.deadline) <= Date.parse(now)) : dueFor(previous, player.id, now))) throw new RuleError('DEADLINE_EXCEEDED');
+            if (!['ABANDON_GAME', 'LEAVE_GAME', 'REPLACE_WITH_BOT'].includes(cmd.type) && (sessionCommand ? timerJobs(previous).some(job => Date.parse(job.deadline) <= Date.parse(now)) : dueFor(previous, player.id, now))) throw new RuleError('DEADLINE_EXCEEDED');
             let result: Transition;
-            if (sessionCommand) {
+            if (seatCommand) {
+              result = await this.seatChange(db, room, previous, player.id, cmd, now);
+            } else if (sessionCommand) {
               if (cmd.type === 'RESUME_GAME' && !this.requiredOnline(previous)) throw new RuleError('PLAYERS_NOT_READY');
+              // An empty seat does not fill itself by waiting, so resuming past
+              // one would hand the turn to nobody.
+              if (cmd.type === 'RESUME_GAME' && vacantSeats(previous).length) throw new RuleError('PLAYERS_NOT_READY');
               const reasons: PauseReason[] = cmd.type === 'RESUME_GAME' ? [] : [...new Set<PauseReason>([...previous.publicState.pauseReasons, 'MANUAL'])];
               result = this.sessionResult(previous, reasons, now, cmd.type, player.id);
               await this.persist(db, room, previous, result, player.id, cmd, cmd.type === 'ABANDON_GAME' ? 'ABANDONED' : undefined);
@@ -230,6 +243,55 @@ export class Games {
     const people = state.publicState.requiredPlayerIds.filter(id => state.publicState.players[id]?.kind !== 'BOT');
     return online.size > 0 && people.every(id => online.has(id));
   }
+  /**
+   * Leaving a live game, and filling the seat it leaves behind.
+   *
+   * A vacancy pauses the table under its own reason rather than DISCONNECTED,
+   * because waiting will not resolve it: somebody has to decide to carry on
+   * without that player or to stop. The seat keeps its cards and its place in
+   * the turn order, so a bot taking it over continues the same position rather
+   * than starting a new one.
+   */
+  private async seatChange(db: PoolClient, room: Row, previous: CanonicalState, actorId: string, cmd: Command, now: string): Promise<Transition> {
+    const players = previous.publicState.players;
+    if (cmd.type === 'LEAVE_GAME') {
+      const others = Object.values(players).filter(p => p.id !== actorId && (p.kind ?? 'HUMAN') === 'HUMAN');
+      if (!others.length) {
+        // The last person out closes the table; nobody is left to decide.
+        const result = this.sessionResult(previous, [...new Set<PauseReason>([...previous.publicState.pauseReasons, 'MANUAL'])], now, 'ABANDON_GAME', actorId);
+        await db.query('UPDATE app.players SET left_at=clock_timestamp() WHERE id=$1', [actorId]);
+        await this.persist(db, room, previous, result, actorId, cmd, 'ABANDONED');
+        return result;
+      }
+      const result = this.seatResult(previous, actorId, 'VACANT', now, cmd.type, actorId, 'Left the game.');
+      await db.query('UPDATE app.players SET left_at=clock_timestamp() WHERE id=$1', [actorId]);
+      if (room.host_player_id === actorId) {
+        // The table still needs somebody who can pause, resume or end it.
+        await db.query('UPDATE app.rooms SET host_player_id=$2 WHERE id=$1', [room.id, others[0]!.id]);
+        Object.assign(room, await this.rooms.changed(db, room));
+      }
+      await this.persist(db, room, previous, result, actorId, cmd);
+      return result;
+    }
+    const seatId = cmd.payload.playerId as string;
+    if (players[seatId]?.kind !== 'VACANT') throw new RuleError('FORBIDDEN');
+    const result = this.seatResult(previous, seatId, 'BOT', now, cmd.type, actorId, 'Handed an empty seat to a bot.');
+    // The row is reinstated as an automated seat: same id, same place in the
+    // order, no identity, so nobody can rejoin into the bot's cards.
+    await db.query("UPDATE app.players SET kind='BOT',auth_user_id=null,left_at=null,ready=true WHERE id=$1", [seatId]);
+    await this.persist(db, room, previous, result, actorId, cmd);
+    return result;
+  }
+
+  private seatResult(previous: CanonicalState, seatId: string, kind: 'VACANT' | 'BOT', now: string, type: string, actor: string, message: string): Transition {
+    const working = structuredClone(previous) as WorkingState;
+    working.publicState.players[seatId]!.kind = kind;
+    const reasons = new Set<PauseReason>(working.publicState.pauseReasons);
+    if (vacantSeats(working).length) reasons.add('SEAT_VACANT'); else reasons.delete('SEAT_VACANT');
+    const state = pauseState(working, [...reasons], now, engineContext().random);
+    return { state, effects: [{ type: 'PUBLIC_ACTIVITY', actorPlayerId: actor, action: type, message, subjectPlayerId: seatId }], occurredAt: now, randomDraws: [] };
+  }
+
   private sessionResult(previous: CanonicalState, reasons: PauseReason[], now: string, type: string, actor: string | null = null, freezeAt = now): Transition {
     const state = pauseState(previous, reasons, freezeAt, engineContext().random);
     const message = type === 'ABANDON_GAME' ? 'The host abandoned this game.' : reasons.length ? `Game paused: ${reasons.map(r => r.toLowerCase().replaceAll('_', ' ')).join(', ')}.` : 'Game resumed with its saved time remaining.';
