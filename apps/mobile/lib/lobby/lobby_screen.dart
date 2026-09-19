@@ -564,19 +564,44 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
                   subtitle: Text('Invite a friend'),
                 ),
               const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: disabled || lobby.own == null
-                    ? null
-                    : () => controller.command('SET_READY', {
-                        'ready': lobby.own!['ready'] != true,
-                      }),
-                icon: Icon(
-                  lobby.own?['ready'] == true ? Icons.undo : Icons.check,
+              // Once you are ready, readying is no longer the main action, so it
+              // steps back and starting takes the emphasis.
+              if (lobby.own?['ready'] == true)
+                OutlinedButton.icon(
+                  onPressed: disabled
+                      ? null
+                      : () => controller.command('SET_READY', {'ready': false}),
+                  icon: const Icon(Icons.undo),
+                  label: const Text('Not ready'),
+                )
+              else
+                FilledButton.icon(
+                  onPressed: disabled || lobby.own == null
+                      ? null
+                      : () => controller.command('SET_READY', {'ready': true}),
+                  icon: const Icon(Icons.check),
+                  label: const Text("I'm ready"),
                 ),
-                label: Text(
-                  lobby.own?['ready'] == true ? 'Not ready' : "I'm ready",
+              if (lobby.isHost) ...[
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: disabled || !lobby.eligible
+                      ? null
+                      : () => controller.command('START_GAME', {}),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start game'),
                 ),
+              ],
+              const SizedBox(height: 8),
+              Text(
+                lobby.eligible
+                    ? lobby.isHost
+                          ? 'Everyone is ready. Start when you are.'
+                          : 'Everyone is ready. Waiting for the host to start.'
+                    : 'Gather 3–4 players. Everyone must be online and ready.',
+                style: const TextStyle(fontSize: 12, color: Color(0xff5f7570)),
               ),
+              const SizedBox(height: 4),
               TextButton(
                 onPressed: disabled ? null : () => _editProfile(lobby),
                 child: const Text('Edit nickname & colour'),
@@ -693,21 +718,6 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
               ),
               const SizedBox(height: 12),
               const Text('Base game · 3–4 players · Random island'),
-              if (lobby.isHost) ...[
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: disabled || !lobby.eligible
-                      ? null
-                      : () => controller.command('START_GAME', {}),
-                  child: const Text('Start game'),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Text(
-                lobby.eligible
-                    ? 'Everyone is ready. The host can start the game.'
-                    : 'Gather 3–4 players. Everyone must be online and ready.',
-              ),
             ],
           ),
         ),
