@@ -1071,6 +1071,52 @@ class _GameScreenState extends ConsumerState<GameScreen>
     );
   }
 
+  /// What the bank will give you, resource by resource. A port is invisible
+  /// otherwise: you own a junction on the board and nothing tells you the rate
+  /// changed, so the only way to find out was to try a trade.
+  Widget _rates(GameSnapshot s) {
+    final rates = {for (final r in resourceTypes) r: s.bankRate(r)};
+    final ported = rates.values.any((rate) => rate < 4);
+    return Semantics(
+      label: ported
+          ? 'Your bank rates: ${rates.entries.map((e) => '${e.key} ${e.value} to one').join(', ')}'
+          : 'Bank rate four to one on everything; build on a port to improve it',
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              ported ? 'Your bank rates' : 'Bank rate 4:1 on everything',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              ported
+                  ? 'Build on a port junction to improve a rate. Exchange from Trade.'
+                  : 'Build a settlement or city on a port junction to trade better.',
+              style: const TextStyle(fontSize: 12, color: hudMuted),
+            ),
+            if (ported) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final entry in rates.entries)
+                    HudStat(
+                      Icons.swap_horiz,
+                      '${words(entry.key)} ${entry.value}:1',
+                      emphasis: entry.value < 4,
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _hand(GameView view, GameSnapshot s) => HudPanel(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1147,6 +1193,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
           ),
           const SizedBox(height: 12),
         ],
+        _rates(s),
+        const SizedBox(height: 12),
         Text(
           'Development cards (${s.cards.length})',
           style: const TextStyle(fontWeight: FontWeight.w600),
@@ -1901,7 +1949,13 @@ class _TradeSheetState extends State<_TradeSheet> {
           child: Text(
             exact
                 ? 'Exchange with the bank'
-                : 'Bank needs an exact $rate:1 amount',
+                : giveType.isEmpty || receiveType.isEmpty
+                ? 'Choose what to give and receive'
+                : resourceTypes.where((r) => give[r]! > 0).length > 1 ||
+                      resourceTypes.where((r) => receive[r]! > 0).length > 1
+                // Naming one resource here would misdescribe the selection.
+                ? 'The bank takes one resource at a time'
+                : 'Give ${rate * (receiving < 1 ? 1 : receiving)} ${words(giveType)} for ${receiving < 1 ? 1 : receiving}',
           ),
         ),
       ],

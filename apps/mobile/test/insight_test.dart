@@ -70,6 +70,89 @@ void main() {
     });
   });
 
+  group('bank rates', () {
+    test('a port improves the rate for any building, city included', () {
+      final json = uiSnapshot('action');
+      final s0 = parse(json);
+      final me = s0.playerId;
+      final port = (json['publicState']['board']['ports'] as Map).values
+          .cast<Map>()
+          .firstWhere((p) => p['resourceType'] != null);
+      final vertex = (port['vertexIds'] as List).first;
+      final resource = port['resourceType'] as String;
+      (json['publicState']['buildings'] as Map).clear();
+      (json['publicState']['buildings'] as Map)[vertex] = {
+        'ownerPlayerId': me,
+        'type': 'CITY',
+      };
+      final s = parse(json);
+      expect(s.bankRate(resource), 2, reason: 'a city on its own port');
+      final other = resourceTypes.firstWhere((r) => r != resource);
+      expect(s.bankRate(other), 4, reason: 'and no better elsewhere');
+    });
+
+    test('a generic port gives three for one on everything', () {
+      final json = uiSnapshot('action');
+      final me = json['privateState']['playerId'] as String;
+      final port = (json['publicState']['board']['ports'] as Map).values
+          .cast<Map>()
+          .firstWhere((p) => p['resourceType'] == null);
+      (json['publicState']['buildings'] as Map).clear();
+      (json['publicState']['buildings']
+          as Map)[(port['vertexIds'] as List).first] = {
+        'ownerPlayerId': me,
+        'type': 'SETTLEMENT',
+      };
+      final s = parse(json);
+      for (final r in resourceTypes) {
+        expect(s.bankRate(r), 3, reason: r);
+      }
+    });
+
+    test('with no port everything is four for one', () {
+      final json = uiSnapshot('action');
+      (json['publicState']['buildings'] as Map).clear();
+      final s = parse(json);
+      for (final r in resourceTypes) {
+        expect(s.bankRate(r), 4, reason: r);
+      }
+    });
+  });
+
+  testWidgets('the hand says what the bank will give you', (t) async {
+    t.view.physicalSize = const Size(1200, 3000);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final json = uiSnapshot('action');
+    final me = json['privateState']['playerId'] as String;
+    final port = (json['publicState']['board']['ports'] as Map).values
+        .cast<Map>()
+        .firstWhere((p) => p['resourceType'] != null);
+    (json['publicState']['buildings'] as Map).clear();
+    (json['publicState']['buildings']
+        as Map)[(port['vertexIds'] as List).first] = {
+      'ownerPlayerId': me,
+      'type': 'CITY',
+    };
+    final p = FakePort();
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [
+          gamePortProvider.overrideWithValue(p),
+          protocolProvider.overrideWithValue(uiProtocol),
+        ],
+        child: const MaterialApp(home: GameScreen()),
+      ),
+    );
+    await t.pump();
+    p.emit('connected', true);
+    p.emit('snapshot', json);
+    await t.pumpAndSettle();
+    expect(find.text('Your bank rates'), findsOneWidget);
+    expect(find.textContaining('2:1'), findsWidgets);
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('the log collapses, expands and scrolls', (t) async {
     t.view.physicalSize = const Size(1200, 3000);
     t.view.devicePixelRatio = 1;

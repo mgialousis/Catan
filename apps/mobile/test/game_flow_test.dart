@@ -139,14 +139,14 @@ void main() {
       await t.tap(find.byTooltip('One more Ore').last);
       await t.pumpAndSettle();
       await t.scrollUntilVisible(
-        find.textContaining('Bank needs'),
+        find.textContaining('one resource at a time'),
         180,
         scrollable: find.byType(Scrollable).last,
       );
       await t.pumpAndSettle();
       final button = t.widget<OutlinedButton>(
         find.ancestor(
-          of: find.textContaining('Bank needs'),
+          of: find.textContaining('one resource at a time'),
           matching: find.byType(OutlinedButton),
         ),
       );
