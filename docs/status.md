@@ -1,29 +1,69 @@
 # Current project status
 
-Updated 2026-09-19 (Europe/Zurich). Use this file for handoff; dated verification
-documents retain historical evidence and are not a statement of the current release.
+Updated 2026-09-19 (Europe/Zurich), after practice mode, leaving a live game and
+the public release. Use this file for handoff; dated verification documents retain
+historical evidence and are not a statement of the current release.
 
 ## Release and data
 
-- Public repository: https://github.com/mgialousis/Catan. Phases 1–6 are implemented;
-  Phase 7 acceptance remains partial.
-- Web: `7833c74`, [live deployment](https://dashboard.render.com/static/srv-dajgfdnqj5pc73dhl33g/deploys/dep-dak5ikrl550s73a07b1g).
-- Android: signed [build 10](https://github.com/mgialousis/Catan/actions/runs/34893289994),
-  `7833c74`, successful and artifact unexpired when checked. Includes Catan branding,
-  resource/dice/trade feedback, attributed activity and the rasterized terrain optimization.
-- API: `23bd0db` pause-write fix is **live** on
-  [Render](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330/deploys/dep-dams95lg1s2s73b9t5lg);
-  post-deployment preflight passed. Prior live API was `4216655`.
-- API-only changes do not require an APK or web rebuild. `7833c74` changed only the
-  mobile activity model/test, so the preceding API release already contained all
-  backend changes until the pause fix.
-- Both existing Render services use Frankfurt; API plan is Free, one instance,
-  automatic deployments disabled. No new hosted resource or plan upgrade was requested.
-- Migration history was reconciled on September 14 to `20260909000100 / foundation`.
-  No schema migration is part of the pause fix.
-- Current saved game before this deployment: three seats, turn 19, `AWAIT_ROLL`,
-  `PAUSED`, version 701, reason `RECOVERY`. Earlier turn-21 evidence is historical.
-  Do not abandon, resume, replace or edit the saved game to run acceptance tests.
+- Repository: https://github.com/mgialousis/Catan, **public** since 2026-09-19.
+  History was audited for credentials first; only `.env.example` placeholders and
+  deliberately fake test fixtures matched. Phases 1–6 are implemented and a solo
+  practice mode against bots ships on top of them; Phase 7 acceptance remains partial.
+- Web: `65a45b7`,
+  [live](https://dashboard.render.com/static/srv-dajgfdnqj5pc73dhl33g).
+- API: `0b3cc35`,
+  [live](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330). It sits behind
+  `main` on purpose: every commit since touches only `apps/mobile` or the workflow,
+  and redeploying would have interrupted a practice game in progress for no
+  behaviour change. Check with
+  `git diff --name-only <deployed>..HEAD -- apps/server packages/ supabase/`
+  before assuming an API deploy is needed.
+- Android: signed build published to a rolling release. Downloads **without a
+  GitHub account**, unlike a build artifact, which requires one whatever the
+  repository's visibility:
+  https://github.com/mgialousis/Catan/releases/download/android-latest/island-table.apk
+  Verified anonymously at 55.0 MB against the adjacent `SHA256SUMS`. Each build of
+  `main` replaces both files; the URL does not change.
+- Both Render services are Frankfurt, Free plan, one instance, automatic deploys
+  disabled. No paid resource is enabled.
+- Schema is at migration **3**. `2` added bot seats and practice rooms; `3` widened
+  the seat palette. `Database.ready()` accepts `[2, 3]`, so a build must be deployed
+  **before** its migration is applied; pinning a single version crash-loops the API
+  in either order.
+
+## Practice mode against bots
+
+Solo practice ships end to end and is in real use on the hosted stack.
+
+- The rules engine gained `legalCommands()`, written against a `PlayerView` of
+  public state plus one seat's own hand. A bot is not trusted to behave; it is
+  structurally unable to see another hand, the bank or the deck. Three facts a seat
+  legitimately knows but `PublicState` omits arrive as explicit hints: remaining
+  development cards, the pending setup vertex, and per-resource bank stock.
+- Difficulty is `EASY` (uniform among legal moves) or `MEDIUM` (scored). `HARD` is
+  deliberately absent until it plays differently from `MEDIUM`.
+- The runner takes the same path a person's command takes — fence, per-command
+  advisory lock, receipt, room row, game row. A job id carries room, phase and
+  version, so a retry after a crash replays the recorded move rather than inventing
+  a second one. Moves are paced about a second apart.
+- A practice room holds no `active_slot`, so it never competes with the single live
+  multiplayer game.
+- Hosted evidence: 6 practice rooms, **3 played to completion**, 18 automated seats
+  and **708 bot moves**. This is the first Phase 7 gameplay evidence produced without
+  assembling human players.
+
+## Leaving a live game
+
+Any seated player can leave; it is no longer the host's alone, and no longer only
+"end it for everyone". A vacated seat becomes `VACANT` and pauses the table under
+`SEAT_VACANT` — distinct from `DISCONNECTED`, which resolves itself when somebody
+reconnects while a vacancy never will. Resuming is refused while a seat is empty.
+The seat keeps its cards and turn position, so `REPLACE_WITH_BOT` continues that
+position; its row is reinstated with no identity so nobody can rejoin into the
+bot's cards. Any remaining player may fill it, the host role transfers if the host
+left, and the last person out closes the table. Used in production: 3 seat commands
+recorded.
 
 ## Pause-write bug
 
@@ -38,7 +78,12 @@ are left intact until explicit resume; there is no historical-data cleanup.
 Presence notifications still work, and resume still checks required players under
 the room lock. A disconnect-only pause still automatically resumes on reconnection.
 
-Validation: 230 Node tests and 60 local database/auth/gameplay checks passed;
+Outcome after deployment: **4** presence-pause records since the fix went live on
+September 18, against 630 before it, the most recent at 15:43 UTC on September 19
+and attributable to practice games starting and stopping rather than to a loop.
+The write loop is stopped. No historical cleanup was performed.
+
+Validation at the time: 230 Node tests and 60 local database/auth/gameplay checks passed;
 all six application-table counts returned to their starting values. New regressions
 exercise repeated socket flaps and idle ticks for each host-resume reason and a
 legacy combined reason. Version, updated timestamp, clock state, logs, receipts and
@@ -54,9 +99,9 @@ or never update their advisory `last_seen_at` timestamp.
 | P7.2 Database | Hosted migration/permissions/TLS and history reconciliation complete. |
 | P7.3 API | Live API and saved-paused-game replacement evidence exist. Active synthetic restart/fencing and measured ingress remain open; `TRUSTED_PROXY_HOPS=0` must not be guessed. |
 | P7.4 Web | Live, real configuration, entry-point cache policy checked. |
-| P7.5 Native | Signed Android APK produced; user reports Android use. Exact device/build acceptance, iOS provisioning and physical iPhone install remain open. |
-| P7.6–P7.7 Matches | Earlier hosted browser scenario is partial evidence. Mixed native/web privacy/reconnect cases and complete timed/untimed human matches on separate networks remain open. |
-| P7.8 Performance | Regression tests and fewer rendering operations verified; restored hosted recipient snapshots measure 13,715–13,804 bytes uncompressed. Physical Android frame timings, command/convergence/reconnect timings and a two-hour four-client soak remain open. |
+| P7.5 Native | Signed Android APK published to a release that downloads without an account, verified anonymously against its checksum. Exact device/build acceptance, iOS provisioning and physical iPhone install remain open. |
+| P7.6–P7.7 Matches | Three hosted practice games ran to completion with 708 automated moves, exercising the rules end to end without needing to assemble players. That is not the gate: mixed native/web privacy and reconnect cases, and complete timed and untimed **human** matches on separate networks, remain open. |
+| P7.8 Performance | Regression tests and fewer rendering operations verified; restored hosted recipient snapshots measure 13,715–13,804 bytes uncompressed. Board rendering fell from roughly 300 blur operations per paint to 2 in the terrain layer, and the user confirms scrolling and zooming feel smoother; **no frame time has been measured**, because `flutter test` rasterises in software and its own cost swamps the paint, so only operation counts are evidence. Physical Android frame timings, command/convergence/reconnect timings and a two-hour four-client soak remain open — a bot-only game is now the obvious soak driver. |
 | P7.9 Operations | Hosted application backup and isolated local restore verified September 19. Full Auth recovery and privileged hosted retention still open; local-copy retention dry run found zero eligible records. |
 | P7.10 Handoff | Release links and limitations recorded here; device versions and final acceptance results still needed. |
 
@@ -107,6 +152,9 @@ the three restored games. Render's first two post-deploy memory samples were abo
 User device availability: one Android phone, APK downloaded from GitHub; exact model
 and installed build not yet recorded. No iPhone is currently available, and no
 Android device is attached to this workstation. iPhone acceptance remains unverified.
+
+A practice game now needs neither the live room slot nor other people, so the
+soak and latency work under P7.8 no longer waits on anybody's availability.
 
 Next: complete the available non-disruptive acceptance checks. Hosted synthetic
 games/soaks need the one active room slot to be free; physical-device checks need

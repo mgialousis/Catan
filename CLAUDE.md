@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Island Table** — a private multiplayer base-game board game (working name; original presentation, no licensed assets). Flutter client (Web/iOS/Android) plus an authoritative NestJS/Socket.IO backend on Supabase PostgreSQL.
 
-`PLAN.md` is the approved execution blueprint and the source of truth for scope; it defines seven phases with exit gates. **Phases 1–6 are implemented and locally verified; Phase 7 (deployment) is in progress.** Do not start work on a phase the user has not authorized. When work changes the plan's state, update the `PLAN.md` checkboxes, the matching `docs/phase-N-verification.md` (evidence) and `docs/protocol.md` (decisions) alongside the code. Tick a checkbox only for what is actually verified — narrowing a criterion to make it tickable is the user's call, not the implementer's.
+`PLAN.md` is the approved execution blueprint and the source of truth for scope; it defines seven phases with exit gates. **Phases 1–6 are implemented and locally verified; Phase 7 (deployment) is in progress.** A solo practice mode against bots ships on top of them — see `docs/status.md`, which is the current-state handoff and is kept ahead of this file. Do not start work on a phase the user has not authorized. When work changes the plan's state, update the `PLAN.md` checkboxes, the matching `docs/phase-N-verification.md` (evidence) and `docs/protocol.md` (decisions) alongside the code. Tick a checkbox only for what is actually verified — narrowing a criterion to make it tickable is the user's call, not the implementer's.
 
 **The stack is deployed and live** on free tiers (see `docs/deployment.md` and `docs/phase-7-verification.md`):
 
@@ -14,7 +14,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | --- | --- |
 | Web client | https://island-table-web.onrender.com |
 | API | https://island-table-api.onrender.com |
-| Database / Auth | Supabase project `dybismsqbzubwzzfrnfo` (eu-central-1) |
+| Database / Auth | Supabase project `dybismsqbzubwzzfrnfo` (eu-central-1), schema migration 3 |
+| Android APK | https://github.com/mgialousis/Catan/releases/download/android-latest/island-table.apk (no account needed) |
+
+The repository is public. `Database.ready()` accepts a set of schema versions, so a
+build must be deployed **before** its migration is applied; pinning one version
+crash-loops the API in either order. Check
+`git diff --name-only <deployed>..HEAD -- apps/server packages/ supabase/` before
+redeploying the API: a client-only change needs only the static site, and an API
+deploy interrupts whatever game is running.
 
 Render auto-deploy is deliberately **off** (`autoDeployTrigger: "off"` in `render.yaml`), so a push never
 interrupts a game in progress; deploys are explicit. Free instances sleep after 15 minutes idle, so the
