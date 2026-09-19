@@ -6,6 +6,14 @@ import { applyCommand, createGame, assertInvariants, projectGame, projectEffects
 import { Database } from './database.js';
 import type { Rooms } from './rooms.js';
 import { canonical, hash, LobbyError } from './lobby-policy.js';
+import { botJobs, botMove, botDifficulty, matchesBotJob, type BotJob } from './bot-runner.js';
+
+/**
+ * How long an automated seat waits before moving. Long enough that a practice
+ * game reads like people playing rather than the board resolving itself, short
+ * enough that a turn of bots does not feel like waiting for a server.
+ */
+const BOT_PACE_MS = 900;
 import { safeError } from './errors.js';
 import { engineContext } from './engine-context.js';
 import { commonView, gameDelta } from './game-delta.js';
@@ -53,7 +61,7 @@ export class Games {
       state.publicState, state.privateState, state.serverState, state.clockState, nextDeadline(state)];
   }
   async start(db: PoolClient, room: Row, roster: Row[], command: Command, hostId: string): Promise<void> {
-    const result = createGame({ roomId: room.id, players: roster.map(p => ({ id: p.id, nickname: p.nickname, seatIndex: p.seat_index, colour: p.colour })) as InitialPlayer[], turnLimitSeconds: room.settings.turnLimitSeconds }, { ...engineContext(), now: await this.now(db) });
+    const result = createGame({ roomId: room.id, players: roster.map(p => ({ id: p.id, nickname: p.nickname, seatIndex: p.seat_index, colour: p.colour, ...(p.kind === 'BOT' ? { kind: 'BOT' as const } : {}) })) as InitialPlayer[], turnLimitSeconds: room.settings.turnLimitSeconds }, { ...engineContext(), now: await this.now(db) });
     await db.query(`INSERT INTO app.game_states(room_id,version,rules_version,schema_version,phase,phase_id,turn_number,active_player_id,public_state,private_state,server_state,clock_state,next_deadline_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, this.values(result.state));
     await this.record(db, null, result, hostId, command);
@@ -234,7 +242,9 @@ export class Games {
     await this.record(db, previous, result, actor, command, metadata);
     const nextStatus = status ?? (result.state.publicState.phase === 'COMPLETE' ? 'FINISHED' : result.state.publicState.pauseReasons.length ? 'PAUSED' : 'ACTIVE');
     if (nextStatus !== room.status) {
-      await db.query("UPDATE app.rooms SET status=$2,active_slot=CASE WHEN $2 IN ('FINISHED','ABANDONED') THEN NULL ELSE 1 END,ended_at=CASE WHEN $2 IN ('FINISHED','ABANDONED') THEN clock_timestamp() ELSE NULL END WHERE id=$1", [room.id,nextStatus]);
+      // Practice rooms hold no slot at all, so the live-room case must respect
+      // mode rather than forcing every active room into slot 1.
+      await db.query("UPDATE app.rooms SET status=$2,active_slot=CASE WHEN $2 IN ('FINISHED','ABANDONED') OR mode='PRACTICE' THEN NULL ELSE 1 END,ended_at=CASE WHEN $2 IN ('FINISHED','ABANDONED') THEN clock_timestamp() ELSE NULL END WHERE id=$1", [room.id,nextStatus]);
       Object.assign(room, await this.rooms.changed(db, room));
     }
   }
@@ -282,9 +292,45 @@ export class Games {
     this.wake(); void this.flush().catch(() => undefined); void this.rooms.flush().catch(() => undefined);
     return result;
   }
+  /**
+   * One automated move, under the same lock order a person's command takes:
+   * fence, per-command advisory lock, receipt, room row, game row. The receipt
+   * is checked before anything is applied, so a retry after a crash is a no-op
+   * rather than a second move.
+   */
+  private async runBot(job: BotJob): Promise<'APPLIED' | 'STALE' | 'EARLY'> {
+    const result = await this.database.transaction(async db => {
+      await this.rooms.fence(db);
+      await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`system:bot:${job.commandId}`]);
+      const receipt = (await db.query("SELECT 1 FROM app.command_receipts WHERE actor_key='system:bot' AND command_id=$1", [job.commandId])).rowCount;
+      if (receipt) return 'STALE' as const;
+      const room = (await db.query('SELECT * FROM app.rooms WHERE id=$1 FOR UPDATE', [job.roomId])).rows[0];
+      if (!room || room.status !== 'ACTIVE') return 'STALE' as const;
+      this.rooms.assertOwnership(room.runtime_epoch);
+      const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE', [job.roomId])).rows[0];
+      const state = this.state(row), now = await this.now(db);
+      if (!matchesBotJob(state, job)) return 'STALE' as const;
+      // Moves are paced so a practice game reads like people playing rather
+      // than the board resolving itself the instant a turn passes.
+      if (Date.parse(now) - row.updated_at.getTime() < BOT_PACE_MS) return 'EARLY' as const;
+      const move = botMove(state, job, botDifficulty(room.settings), now, engineContext().random);
+      if (!move) return 'STALE' as const;
+      await this.persist(db, room, state, move.result, move.actor, move.command, undefined, { botDifficulty: botDifficulty(room.settings) });
+      await db.query("INSERT INTO app.command_receipts(actor_key,command_id,room_id,request_hash,status,response) VALUES ('system:bot',$1,$2,$3,'ACCEPTED',$4)", [job.commandId,room.id,hash(canonical(job)),this.ack(move.command,undefined,move.result.state.version)]);
+      return 'APPLIED' as const;
+    });
+    // Only an applied move earns an immediate wake. Waking on EARLY would spin
+    // the loop against the pacing delay instead of waiting out the pause.
+    if (result === 'APPLIED') {
+      this.wake(); void this.flush().catch(() => undefined); void this.rooms.flush().catch(() => undefined);
+    }
+    return result;
+  }
   /** Boot holds the exclusive global fence; outage/shutdown recovery holds its shared fence. */
   async recover(db: PoolClient, reason: 'RECOVERY' | 'DATABASE_UNAVAILABLE', exact = false): Promise<void> {
-    const rooms = (await db.query('SELECT * FROM app.rooms WHERE active_slot=1 ORDER BY id FOR UPDATE')).rows;
+    // Practice rooms hold no slot, so recovery has to find live rooms by status
+    // or an automated game would keep a stale epoch and never be fenced again.
+    const rooms = (await db.query("SELECT * FROM app.rooms WHERE status IN ('LOBBY','ACTIVE','PAUSED') ORDER BY id FOR UPDATE")).rows;
     for (const room of rooms) {
       await db.query('UPDATE app.rooms SET runtime_epoch=$2 WHERE id=$1',[room.id,this.rooms.epoch]); room.runtime_epoch = this.rooms.epoch;
       if (room.status === 'LOBBY') continue;
@@ -323,6 +369,18 @@ export class Games {
         return rows.flatMap(row => timerJobs(this.state(row)));
       }) : [];
       for (const job of jobs) await this.runTimer(job);
+      // Automated seats are collected the same way as timers: outside the room
+      // lock, then applied one at a time under it.
+      const seats = await this.database.transaction(async db => {
+        await this.rooms.fence(db);
+        const rows = (await db.query("SELECT g.*, r.settings FROM app.game_states g JOIN app.rooms r ON r.id=g.room_id WHERE r.status='ACTIVE' AND r.runtime_epoch=$1 ORDER BY g.room_id",[this.rooms.epoch])).rows;
+        return rows.flatMap(row => botJobs(this.state(row), botDifficulty(row.settings)));
+      });
+      let botsPending = false;
+      for (const job of seats) {
+        const outcome = await this.runBot(job);
+        botsPending ||= outcome === 'EARLY';
+      }
       let clocksRunning = false;
       await this.database.transaction(async db => {
         await this.rooms.fence(db);
@@ -351,6 +409,8 @@ export class Games {
           }
         }
       });
+      // Keep ticking while a paced move is still waiting to land.
+      if (botsPending || seats.length) delay = Math.min(delay ?? BOT_PACE_MS, BOT_PACE_MS);
       this.clocksRunning = clocksRunning;
       await this.flush(); await this.rooms.flush();
     } catch (error) {

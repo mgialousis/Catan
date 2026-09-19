@@ -10,6 +10,8 @@ import { safeError } from './errors.js';
 type Row = Record<string, any>;
 type Ack = { commandId: string; status: 'ACCEPTED' | 'REJECTED'; scope: 'ROOM'; roomId: string | null; version: number | null; serverTime: string; result?: { playerId?: string; invitationCode?: string }; error?: ReturnType<typeof safeError> };
 const colours = ['RED', 'BLUE', 'WHITE', 'ORANGE'];
+/** Seat names for automated players, one per non-host seat. */
+const BOT_NAMES = ['Ada', 'Bo', 'Cy'];
 
 /** Single-process lobby coordinator. Database locks/receipts remain authoritative. */
 export class Rooms {
@@ -151,12 +153,28 @@ export class Rooms {
   private async apply(db: PoolClient, userId: string, command: Command, room?: Row): Promise<Ack> {
     const payload = command.payload;
     if (command.type === 'CREATE_ROOM') {
-      if (room && ['LOBBY', 'ACTIVE', 'PAUSED'].includes(room.status)) throw new LobbyError('ROOM_UNAVAILABLE');
+      // Asking for bots is what makes a room a practice room. It holds no slot,
+      // so it neither takes nor blocks the one live multiplayer game.
+      const bots = payload.bots as number | undefined;
+      if (bots === undefined) {
+        if (room && ['LOBBY', 'ACTIVE', 'PAUSED'].includes(room.status)) throw new LobbyError('ROOM_UNAVAILABLE');
+      } else if ((await db.query(`SELECT 1 FROM app.rooms r JOIN app.players p ON p.room_id=r.id
+        WHERE p.auth_user_id=$1 AND p.left_at IS NULL AND r.mode='PRACTICE' AND r.status IN ('LOBBY','ACTIVE','PAUSED')`, [userId])).rowCount) {
+        // One practice game each at a time, so an abandoned one cannot pile up.
+        throw new LobbyError('ROOM_UNAVAILABLE');
+      }
       const name = nickname(payload.nickname as string), invite = await this.uniqueInvitation(db);
-      room = (await db.query(`INSERT INTO app.rooms(created_by_user_id,active_slot,settings,invitation_hash,invitation_expires_at,runtime_epoch)
-        VALUES ($1,1,$2,$3,clock_timestamp()+interval '24 hours',$4) RETURNING *`, [userId, payload.settings, invite.digest, this.epoch])).rows[0] as Row;
+      room = (await db.query(`INSERT INTO app.rooms(created_by_user_id,active_slot,mode,settings,invitation_hash,invitation_expires_at,runtime_epoch)
+        VALUES ($1,$5,$6,$2,$3,clock_timestamp()+interval '24 hours',$4) RETURNING *`,
+        [userId, payload.settings, invite.digest, this.epoch, bots === undefined ? 1 : null, bots === undefined ? 'MULTIPLAYER' : 'PRACTICE'])).rows[0] as Row;
       const playerId = randomUUID();
       await db.query(`INSERT INTO app.players(id,room_id,auth_user_id,nickname,nickname_key,seat_index,colour) VALUES ($1,$2,$3,$4,$5,0,'RED')`, [playerId, room.id, userId, name.name, name.key]);
+      for (let seat = 1; seat <= (bots ?? 0); seat++) {
+        // Ready on arrival and holding no identity: nothing is waiting on them.
+        const botName = BOT_NAMES[seat - 1]!;
+        await db.query(`INSERT INTO app.players(room_id,kind,auth_user_id,nickname,nickname_key,seat_index,colour,ready)
+          VALUES ($1,'BOT',null,$2,$3,$4,$5,true)`, [room.id, botName, botName.toLowerCase(), seat, colours[seat]!]);
+      }
       room = (await db.query('UPDATE app.rooms SET host_player_id=$1 WHERE id=$2 RETURNING *', [playerId, room.id])).rows[0] as Row;
       await this.outbox(db, room, null);
       return this.ack(command, undefined, room, { playerId, invitationCode: invite.code });
@@ -219,7 +237,7 @@ export class Rooms {
         reset = true; break;
       }
       case 'START_GAME':
-        startEligibility(roster.map(p => ({ id: p.id as string, ready: p.ready as boolean, colour: p.colour as string | null })), this.online(room.id));
+        startEligibility(roster.map(p => ({ id: p.id as string, ready: p.ready as boolean, colour: p.colour as string | null, kind: p.kind as string | undefined })), this.online(room.id));
         if (!this.games) throw new LobbyError('GAME_NOT_AVAILABLE');
         await this.games.start(db, room, roster, command, own.id);
         await db.query("UPDATE app.rooms SET status='ACTIVE' WHERE id=$1", [room.id]);
@@ -242,8 +260,12 @@ export class Rooms {
       await this.fence(db);
       let room: Row | undefined;
       if (roomId) room = (await db.query('SELECT * FROM app.rooms WHERE id=$1 FOR UPDATE', [roomId])).rows[0];
+      // Practice rooms hold no slot, so match on status and prefer the live
+      // multiplayer game when somebody has both. A client that knows its room
+      // passes the id and skips this entirely.
       else room = (await db.query(`SELECT r.* FROM app.rooms r JOIN app.players p ON p.room_id=r.id
-        WHERE p.auth_user_id=$1 AND p.left_at IS NULL AND r.active_slot=1 FOR UPDATE OF r`, [userId])).rows[0];
+        WHERE p.auth_user_id=$1 AND p.left_at IS NULL AND r.status IN ('LOBBY','ACTIVE','PAUSED')
+        ORDER BY r.active_slot NULLS LAST, r.created_at DESC LIMIT 1 FOR UPDATE OF r`, [userId])).rows[0];
       if (!room) { if (roomId) throw new LobbyError('FORBIDDEN'); return; }
       // Expiry mutations are handled before subscribing, by maintenance/commands.
       const players = await this.players(db, room.id), own = players.find(p => p.auth_user_id === userId);

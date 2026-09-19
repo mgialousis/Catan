@@ -25,6 +25,8 @@ export function canonical(value: unknown): string {
   if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(',')}}`;
   return JSON.stringify(value);
 }
-export function startEligibility(players: readonly { id: string; ready: boolean; colour: string | null }[], online: ReadonlySet<string>): void {
-  if (players.length < 3 || players.length > 4 || players.some(player => !player.ready || !player.colour || !online.has(player.id)) || new Set(players.map(player => player.colour)).size !== players.length) throw new LobbyError('PLAYERS_NOT_READY');
+/** An automated seat holds no socket, so only people are checked for presence. */
+export function startEligibility(players: readonly { id: string; ready: boolean; colour: string | null; kind?: string }[], online: ReadonlySet<string>): void {
+  const present = (player: { id: string; kind?: string }) => player.kind === 'BOT' || online.has(player.id);
+  if (players.length < 3 || players.length > 4 || players.some(player => !player.ready || !player.colour || !present(player)) || new Set(players.map(player => player.colour)).size !== players.length) throw new LobbyError('PLAYERS_NOT_READY');
 }

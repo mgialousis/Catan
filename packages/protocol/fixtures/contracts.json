@@ -6190,5 +6190,163 @@
         "ore": 1
       }
     }
+  },
+  {
+    "name": "accept CREATE_ROOM with bots",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": null,
+      "expectedVersion": null,
+      "expectedPhaseId": null,
+      "type": "CREATE_ROOM",
+      "payload": {
+        "nickname": "sample-id",
+        "settings": {
+          "maxPlayers": 4,
+          "turnLimitSeconds": null,
+          "boardMode": "STANDARD_RANDOM",
+          "rulesVersion": "base-2020-v1",
+          "botDifficulty": "EASY"
+        },
+        "bots": 3
+      }
+    }
+  },
+  {
+    "name": "accept CREATE_ROOM with a single bot",
+    "schema": "roomCommand",
+    "valid": true,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": null,
+      "expectedVersion": null,
+      "expectedPhaseId": null,
+      "type": "CREATE_ROOM",
+      "payload": {
+        "nickname": "sample-id",
+        "settings": {
+          "maxPlayers": 4,
+          "turnLimitSeconds": null,
+          "boardMode": "STANDARD_RANDOM",
+          "rulesVersion": "base-2020-v1"
+        },
+        "bots": 1
+      }
+    }
+  },
+  {
+    "name": "reject CREATE_ROOM with too many bots",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": null,
+      "expectedVersion": null,
+      "expectedPhaseId": null,
+      "type": "CREATE_ROOM",
+      "payload": {
+        "nickname": "sample-id",
+        "settings": {
+          "maxPlayers": 4,
+          "turnLimitSeconds": null,
+          "boardMode": "STANDARD_RANDOM",
+          "rulesVersion": "base-2020-v1"
+        },
+        "bots": 4
+      }
+    }
+  },
+  {
+    "name": "reject CREATE_ROOM with zero bots",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": null,
+      "expectedVersion": null,
+      "expectedPhaseId": null,
+      "type": "CREATE_ROOM",
+      "payload": {
+        "nickname": "sample-id",
+        "settings": {
+          "maxPlayers": 4,
+          "turnLimitSeconds": null,
+          "boardMode": "STANDARD_RANDOM",
+          "rulesVersion": "base-2020-v1"
+        },
+        "bots": 0
+      }
+    }
+  },
+  {
+    "name": "reject CREATE_ROOM with an unknown difficulty",
+    "schema": "roomCommand",
+    "valid": false,
+    "value": {
+      "protocolVersion": 1,
+      "commandId": "11111111-1111-4111-8111-111111111111",
+      "roomId": null,
+      "expectedVersion": null,
+      "expectedPhaseId": null,
+      "type": "CREATE_ROOM",
+      "payload": {
+        "nickname": "sample-id",
+        "settings": {
+          "maxPlayers": 4,
+          "turnLimitSeconds": null,
+          "boardMode": "STANDARD_RANDOM",
+          "rulesVersion": "base-2020-v1",
+          "botDifficulty": "IMPOSSIBLE"
+        }
+      }
+    }
+  },
+  {
+    "name": "accept a bot seat in the public roster",
+    "schema": "publicPlayer",
+    "valid": true,
+    "value": {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "nickname": "Ada",
+      "seatIndex": 1,
+      "colour": "BLUE",
+      "kind": "BOT",
+      "resourceCardCount": 0,
+      "developmentCardCount": 0,
+      "playedKnights": 0,
+      "remainingPieces": {
+        "roads": 15,
+        "settlements": 5,
+        "cities": 4
+      },
+      "publicPoints": 0
+    }
+  },
+  {
+    "name": "reject an unknown player kind",
+    "schema": "publicPlayer",
+    "valid": false,
+    "value": {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "nickname": "Ada",
+      "seatIndex": 1,
+      "colour": "BLUE",
+      "kind": "ROBOT",
+      "resourceCardCount": 0,
+      "developmentCardCount": 0,
+      "playedKnights": 0,
+      "remainingPieces": {
+        "roads": 15,
+        "settlements": 5,
+        "cities": 4
+      },
+      "publicPoints": 0
+    }
   }
 ]
