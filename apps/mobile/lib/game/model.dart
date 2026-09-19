@@ -177,6 +177,11 @@ class GameSnapshot {
   List<JsonMap> get orderedPlayers => players.values.cast<JsonMap>().toList()
     ..sort((a, b) => (a['seatIndex'] as int).compareTo(b['seatIndex'] as int));
   String name(String id) => players[id]?['nickname'] as String? ?? 'Player';
+
+  /// Automated seats are labelled everywhere a name is shown, so a practice
+  /// game never leaves you guessing which opponents are people.
+  bool isBot(String? id) => id != null && players[id]?['kind'] == 'BOT';
+  bool get hasBots => players.values.any((p) => (p as Map)['kind'] == 'BOT');
   List<JsonMap> get incomingTrades => (public['trades'] as Map).values
       .cast<JsonMap>()
       .where(

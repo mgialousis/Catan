@@ -39,6 +39,10 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
     }
   }
 
+  /// Remembered only for the next practice table; the room keeps its own once
+  /// created, so changing this never alters a game already running.
+  String _difficulty = 'MEDIUM';
+
   Future<bool> _saveEntry() async {
     if (!_form.currentState!.validate()) return false;
     await ref
@@ -277,6 +281,44 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
                       },
                 icon: const Icon(Icons.add),
                 label: const Text('Create private table'),
+              ),
+              const SizedBox(height: 12),
+              // Practice is its own table, not a variant of the live one: it
+              // takes no slot, so it never blocks a game with friends.
+              OutlinedButton.icon(
+                onPressed: lobby.pending
+                    ? null
+                    : () async {
+                        if (await _saveEntry()) {
+                          await ref
+                              .read(lobbyProvider.notifier)
+                              .createPractice(difficulty: _difficulty);
+                        }
+                      },
+                icon: const Icon(Icons.smart_toy_outlined),
+                label: const Text('Practise against bots'),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    const Text('Bot skill', style: TextStyle(fontSize: 13)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'EASY', label: Text('Easy')),
+                          ButtonSegment(value: 'MEDIUM', label: Text('Medium')),
+                        ],
+                        selected: {_difficulty},
+                        onSelectionChanged: lobby.pending
+                            ? null
+                            : (value) =>
+                                  setState(() => _difficulty = value.first),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),
@@ -541,6 +583,9 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
     };
     final colour = player['colour'] as String? ?? 'WHITE';
     final you = player['id'] == lobby.playerId;
+    final bot = player['kind'] == 'BOT';
+    // A bot is never in `online`; saying "offline" about one would read as a
+    // problem rather than as a seat that simply holds no connection.
     final online = lobby.online.contains(player['id']);
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -550,11 +595,15 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
         child: Text('${(player['seatIndex'] as int) + 1}'),
       ),
       title: Text(
-        '${player['nickname']}${you ? ' (you)' : ''}',
+        '${player['nickname']}${you ? ' (you)' : ''}${bot ? ' (bot)' : ''}',
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        '${colour.toLowerCase()} · ${player['id'] == lobby.room!['hostPlayerId'] ? 'host · ' : ''}${online ? 'online' : 'offline'}',
+        '${colour.toLowerCase()} · ${player['id'] == lobby.room!['hostPlayerId'] ? 'host · ' : ''}${bot
+            ? 'plays automatically'
+            : online
+            ? 'online'
+            : 'offline'}',
       ),
       trailing: Icon(
         player['ready'] == true

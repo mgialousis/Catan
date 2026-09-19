@@ -197,4 +197,31 @@ void main() {
       expect(view.copy(clearRoom: true).own, isNull);
     },
   );
+
+  test('a practice table is eligible although its bots hold no connection', () {
+    final players = [
+      {'id': '0', 'nickname': 'You', 'ready': true},
+      for (var i = 1; i < 4; i++)
+        {'id': '$i', 'nickname': 'Bot $i', 'ready': true, 'kind': 'BOT'},
+    ];
+    // Only the person is ever online; requiring the bots there would leave a
+    // practice table permanently unable to start.
+    final view = LobbyView(
+      playerId: '0',
+      online: {'0'},
+      room: {'hostPlayerId': '0', 'players': players},
+    );
+    expect(view.bots, true);
+    expect(view.eligible, true);
+    // A table of people still needs all of them present.
+    final people = players.map((p) => {...p}..remove('kind')).toList();
+    expect(
+      LobbyView(
+        playerId: '0',
+        online: {'0'},
+        room: {'hostPlayerId': '0', 'players': people},
+      ).eligible,
+      false,
+    );
+  });
 }

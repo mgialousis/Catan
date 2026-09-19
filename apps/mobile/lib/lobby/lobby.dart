@@ -106,9 +106,14 @@ class LobbyView {
     return null;
   }
 
+  bool get bots => players.any((p) => p['kind'] == 'BOT');
   bool get eligible =>
       players.length >= 3 &&
-      players.every((p) => p['ready'] == true && online.contains(p['id']));
+      players.every(
+        (p) =>
+            p['ready'] == true &&
+            (p['kind'] == 'BOT' || online.contains(p['id'])),
+      );
   LobbyView copy({
     bool? loaded,
     String? nickname,
@@ -340,6 +345,22 @@ class LobbyController extends Notifier<LobbyView> {
       'rulesVersion': 'base-2020-v1',
     },
   }, initial: true);
+
+  /// A practice table: you and [bots] automated opponents, in a room that holds
+  /// no live slot and so never blocks or is blocked by a game with friends.
+  Future<void> createPractice({int bots = 3, String difficulty = 'MEDIUM'}) =>
+      command('CREATE_ROOM', {
+        'nickname': state.nickname,
+        'settings': {
+          'maxPlayers': 4,
+          'turnLimitSeconds': null,
+          'boardMode': 'STANDARD_RANDOM',
+          'rulesVersion': 'base-2020-v1',
+          'botDifficulty': difficulty,
+        },
+        'bots': bots,
+      }, initial: true);
+
   Future<void> join() async {
     final code = normalizeInvitation(state.invitationInput);
     if (code == null) {

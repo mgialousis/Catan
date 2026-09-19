@@ -68,7 +68,9 @@ export class Rooms {
   }
   private snapshot(room: Row, players: Row[]) {
     const value = { roomId: room.id, revision: room.revision, hostPlayerId: room.host_player_id, status: room.status, settings: room.settings,
-      players: players.map(p => ({ id: p.id, nickname: p.nickname, seatIndex: p.seat_index, colour: p.colour, ready: p.ready })) };
+      // kind only on automated seats, so a room of people projects exactly as
+      // it did before practice mode existed.
+      players: players.map(p => ({ id: p.id, nickname: p.nickname, seatIndex: p.seat_index, colour: p.colour, ready: p.ready, ...(p.kind === 'BOT' ? { kind: 'BOT' as const } : {}) })) };
     if (!isValid('roomSnapshot', value)) throw new Error('Invalid stored room projection');
     return value;
   }

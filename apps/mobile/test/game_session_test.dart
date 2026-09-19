@@ -5,6 +5,7 @@ import 'package:island_table/core/connection.dart';
 import 'package:island_table/game/controller.dart';
 import 'package:island_table/game/countdown.dart';
 import 'package:island_table/game/game_screen.dart';
+import 'package:island_table/game/model.dart';
 import 'game_model_test.dart' show uiProtocol, uiSnapshot;
 import 'game_test.dart' show FakePort;
 
@@ -92,7 +93,8 @@ void main() {
       port.emit('snapshot', uiSnapshot('paused'));
       await t.pumpAndSettle();
       expect(find.text('Resume game'), host ? findsOneWidget : findsNothing);
-      expect(find.text('Abandon game'), host ? findsOneWidget : findsNothing);
+      // Everyone can reach the exit; what it offers depends on who they are.
+      expect(find.text('Leave game'), findsOneWidget);
       if (host) {
         await t.tap(find.text('Resume game'));
         await t.pump();
@@ -101,6 +103,82 @@ void main() {
       await t.pumpWidget(const SizedBox());
     });
   }
+
+  /// A saved game whose non-host seats are automated, as practice mode creates.
+  JsonMap withBots(String scene) {
+    final snapshot = uiSnapshot(scene);
+    final players = snapshot['publicState']['players'] as Map;
+    final me = snapshot['privateState']['playerId'];
+    for (final entry in players.entries) {
+      if (entry.key != me) (entry.value as Map)['kind'] = 'BOT';
+    }
+    return snapshot;
+  }
+
+  Future<FakePort> show(
+    WidgetTester t,
+    JsonMap snapshot, {
+    bool isHost = true,
+  }) async {
+    t.view.physicalSize = const Size(1200, 3000);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final port = FakePort();
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [
+          gamePortProvider.overrideWithValue(port),
+          protocolProvider.overrideWithValue(uiProtocol),
+        ],
+        child: MaterialApp(home: GameScreen(isHost: isHost)),
+      ),
+    );
+    await t.pump();
+    port.emit('connected', true);
+    port.emit('snapshot', snapshot);
+    await t.pumpAndSettle();
+    return port;
+  }
+
+  testWidgets('a practice game is left in its own terms', (t) async {
+    final port = await show(t, withBots('paused'));
+    expect(find.text('Leave practice game'), findsOneWidget);
+    expect(find.text('Leave game'), findsNothing);
+    await t.tap(find.text('Leave practice game'));
+    await t.pumpAndSettle();
+    // Nothing about ending it for other people: there are none.
+    expect(find.text('Leave this practice game?'), findsOneWidget);
+    expect(find.text('End game for everyone'), findsNothing);
+    await t.tap(find.text('Keep playing'));
+    await t.pumpAndSettle();
+    expect(port.commands, isEmpty);
+    await t.tap(find.text('Leave practice game'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Leave practice game').last);
+    await t.pump();
+    expect(port.commands.single['type'], 'ABANDON_GAME');
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a guest is told why they cannot end a shared game', (t) async {
+    final port = await show(t, uiSnapshot('paused'), isHost: false);
+    expect(find.text('Leave game'), findsOneWidget);
+    await t.tap(find.text('Leave game'));
+    await t.pumpAndSettle();
+    expect(find.text('Only the host can end this game'), findsOneWidget);
+    await t.tap(find.text('Keep playing'));
+    await t.pumpAndSettle();
+    // An explanation, never a silent no-op that looks like a failure.
+    expect(port.commands, isEmpty);
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('automated seats are labelled in the roster', (t) async {
+    await show(t, withBots('action'));
+    expect(find.textContaining('(bot)'), findsWidgets);
+    await t.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'abandon confirmation can be cancelled and uses the displayed version',
     (t) async {
@@ -121,12 +199,12 @@ void main() {
       port.emit('connected', true);
       port.emit('snapshot', saved);
       await t.pumpAndSettle();
-      await t.tap(find.text('Abandon game'));
+      await t.tap(find.text('Leave game'));
       await t.pumpAndSettle();
       await t.tap(find.text('Keep playing'));
       await t.pumpAndSettle();
       expect(port.commands, isEmpty);
-      await t.tap(find.text('Abandon game'));
+      await t.tap(find.text('Leave game'));
       await t.pumpAndSettle();
       await t.tap(find.text('End game for everyone'));
       await t.pump();

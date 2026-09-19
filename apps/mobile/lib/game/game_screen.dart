@@ -357,25 +357,31 @@ class _GameScreenState extends ConsumerState<GameScreen>
                 discard: snapshot.phase == 'DISCARD_REQUIRED',
               ),
             ),
-          if (widget.isHost && !snapshot.complete)
+          if (!snapshot.complete)
             Wrap(
               spacing: 8,
               children: [
-                OutlinedButton.icon(
+                if (widget.isHost)
+                  OutlinedButton.icon(
+                    onPressed: !view.connected || view.pending != null
+                        ? null
+                        : () => _session(
+                            snapshot.paused ? 'RESUME_GAME' : 'PAUSE_GAME',
+                            snapshot,
+                          ),
+                    icon: Icon(
+                      snapshot.paused ? Icons.play_arrow : Icons.pause,
+                    ),
+                    label: Text(snapshot.paused ? 'Resume game' : 'Pause game'),
+                  ),
+                TextButton.icon(
                   onPressed: !view.connected || view.pending != null
                       ? null
-                      : () => _session(
-                          snapshot.paused ? 'RESUME_GAME' : 'PAUSE_GAME',
-                          snapshot,
-                        ),
-                  icon: Icon(snapshot.paused ? Icons.play_arrow : Icons.pause),
-                  label: Text(snapshot.paused ? 'Resume game' : 'Pause game'),
-                ),
-                TextButton(
-                  onPressed: !view.connected || view.pending != null
-                      ? null
-                      : () => _session('ABANDON_GAME', snapshot),
-                  child: const Text('Abandon game'),
+                      : () => _leave(snapshot),
+                  icon: const Icon(Icons.logout, size: 18),
+                  label: Text(
+                    snapshot.hasBots ? 'Leave practice game' : 'Leave game',
+                  ),
                 ),
               ],
             ),
@@ -798,7 +804,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
         for (final player in s.orderedPlayers)
           Semantics(
             label:
-                '${player['nickname']}, seat ${(player['seatIndex'] as int) + 1}, '
+                '${player['nickname']}${player['kind'] == 'BOT' ? ', bot' : ''}, seat ${(player['seatIndex'] as int) + 1}, '
                 '${player['publicPoints']} public points, ${player['resourceCardCount']} resource cards, '
                 '${player['developmentCardCount']} development cards, ${player['playedKnights']} knights played'
                 '${player['id'] == s.public['activePlayerId'] ? ', active player' : ''}',
@@ -862,7 +868,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
                             const SizedBox(width: 10),
                             Flexible(
                               child: Text(
-                                '${player['nickname']}${player['id'] == s.playerId ? ' (you)' : ''}',
+                                '${player['nickname']}${player['id'] == s.playerId ? ' (you)' : ''}${player['kind'] == 'BOT' ? ' (bot)' : ''}',
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontWeight:
@@ -1125,7 +1131,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
                           maxWidth: constraints.maxWidth,
                         ),
                         child: Text(
-                          '${player['nickname']}${player['id'] == s.playerId ? ' (you)' : ''}',
+                          '${player['nickname']}${player['id'] == s.playerId ? ' (you)' : ''}${player['kind'] == 'BOT' ? ' (bot)' : ''}',
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -1161,14 +1167,46 @@ class _GameScreenState extends ConsumerState<GameScreen>
     );
   }
 
+  /// Leaving is destructive and irreversible, so it always asks first, and it
+  /// asks in the terms of the table you are actually at.
+  Future<void> _leave(GameSnapshot s) async {
+    if (!widget.isHost && !s.hasBots) {
+      // Nothing here can end someone else's game, and the protocol has no way
+      // for one seat to walk out of a live one. Say so rather than offer a
+      // button that quietly does nothing.
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Only the host can end this game'),
+          content: const Text(
+            'You can close the app at any time. The table pauses while you are away and your turn and cards are kept, so you can come back to the same game.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Keep playing'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    await _session('ABANDON_GAME', s);
+  }
+
   Future<void> _session(String type, GameSnapshot basedOn) async {
     if (type == 'ABANDON_GAME') {
+      final practice = basedOn.hasBots;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Abandon this game?'),
-          content: const Text(
-            'This ends the game for everyone without a winner. The saved result cannot be resumed.',
+          title: Text(
+            practice ? 'Leave this practice game?' : 'Abandon this game?',
+          ),
+          content: Text(
+            practice
+                ? 'The game ends here and the bots stop with it. There is nothing to come back to.'
+                : 'This ends the game for everyone without a winner. The saved result cannot be resumed.',
           ),
           actions: [
             TextButton(
@@ -1177,7 +1215,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('End game for everyone'),
+              child: Text(
+                practice ? 'Leave practice game' : 'End game for everyone',
+              ),
             ),
           ],
         ),
