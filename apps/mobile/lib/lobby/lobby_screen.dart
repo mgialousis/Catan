@@ -43,6 +43,10 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
   /// created, so changing this never alters a game already running.
   String _difficulty = 'MEDIUM';
 
+  /// Which way in the player is looking at. Practice first: it is the one that
+  /// needs nobody else to be available.
+  String _mode = 'PRACTICE';
+
   Future<bool> _saveEntry() async {
     if (!_form.currentState!.validate()) return false;
     await ref
@@ -271,87 +275,13 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
                 label: const Text('Connect as guest'),
               ),
             if (connected) ...[
-              FilledButton.icon(
-                onPressed: lobby.pending
-                    ? null
-                    : () async {
-                        if (await _saveEntry()) {
-                          await ref.read(lobbyProvider.notifier).create();
-                        }
-                      },
-                icon: const Icon(Icons.add),
-                label: const Text('Create private table'),
-              ),
-              const SizedBox(height: 12),
-              // Practice is its own table, not a variant of the live one: it
-              // takes no slot, so it never blocks a game with friends.
-              OutlinedButton.icon(
-                onPressed: lobby.pending
-                    ? null
-                    : () async {
-                        if (await _saveEntry()) {
-                          await ref
-                              .read(lobbyProvider.notifier)
-                              .createPractice(difficulty: _difficulty);
-                        }
-                      },
-                icon: const Icon(Icons.smart_toy_outlined),
-                label: const Text('Practise against bots'),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Row(
-                  children: [
-                    const Text('Bot skill', style: TextStyle(fontSize: 13)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'EASY', label: Text('Easy')),
-                          ButtonSegment(value: 'MEDIUM', label: Text('Medium')),
-                        ],
-                        selected: {_difficulty},
-                        onSelectionChanged: lobby.pending
-                            ? null
-                            : (value) =>
-                                  setState(() => _difficulty = value.first),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text(
-                  'or join your friends',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+              const SizedBox(height: 8),
+              _modes(),
+              const SizedBox(height: 20),
+              if (_mode == 'PRACTICE') ..._practice(lobby),
+              if (_mode == 'MULTIPLAYER') ..._multiplayer(lobby),
+              if (_mode == 'RULES') ..._rules(),
             ],
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _code,
-              enabled: !lobby.pending,
-              textCapitalization: TextCapitalization.characters,
-              maxLength: 32,
-              decoration: const InputDecoration(
-                labelText: 'Invitation code',
-                hintText: 'ABCDE-FGHJK',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            if (connected)
-              OutlinedButton.icon(
-                onPressed: lobby.pending
-                    ? null
-                    : () async {
-                        if (await _saveEntry()) {
-                          await ref.read(lobbyProvider.notifier).join();
-                        }
-                      },
-                icon: const Icon(Icons.group_add_outlined),
-                label: const Text('Join table'),
-              ),
             const SizedBox(height: 16),
             const Text(
               'Your guest identity stays on this device. A nickname cannot recover a seat if app data is erased.',
@@ -362,6 +292,227 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
       ),
     ),
   );
+
+  /// Three ways in, side by side, so the choice is visible before anything is
+  /// typed. They wrap to one per line on a narrow phone.
+  Widget _modes() => LayoutBuilder(
+    builder: (context, constraints) {
+      const modes = [
+        ('PRACTICE', Icons.smart_toy_outlined, 'Practice', 'Play bots now'),
+        (
+          'MULTIPLAYER',
+          Icons.group_outlined,
+          'Multiplayer',
+          'Play with friends',
+        ),
+        ('RULES', Icons.menu_book_outlined, 'How to play', 'The short version'),
+      ];
+      final wide = constraints.maxWidth >= 380;
+      final width = wide
+          ? (constraints.maxWidth - 16) / 3
+          : constraints.maxWidth;
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final (value, icon, title, subtitle) in modes)
+            SizedBox(
+              width: width,
+              child: _modeTile(value, icon, title, subtitle),
+            ),
+        ],
+      );
+    },
+  );
+
+  Widget _modeTile(String value, IconData icon, String title, String subtitle) {
+    final chosen = _mode == value;
+    return Material(
+      color: chosen ? const Color(0xffe4efe9) : const Color(0xfffdfbf4),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: () => setState(() => _mode = value),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: chosen ? const Color(0xff256f61) : const Color(0xffe0dac8),
+              width: chosen ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: const Color(0xff256f61)),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                subtitle,
+                style: const TextStyle(fontSize: 12, color: Color(0xff5f7570)),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _practice(LobbyView lobby) => [
+    const Text(
+      'A table of your own against bots. It takes no live slot, so it never '
+      'blocks a game with friends.',
+      style: TextStyle(fontSize: 13),
+    ),
+    const SizedBox(height: 12),
+    // Label above rather than beside: the two segments plus a label do not fit
+    // a 320pt phone on one line.
+    const Align(
+      alignment: Alignment.centerLeft,
+      child: Text('Bot skill', style: TextStyle(fontSize: 13)),
+    ),
+    const SizedBox(height: 6),
+    SegmentedButton<String>(
+      segments: const [
+        ButtonSegment(value: 'EASY', label: Text('Easy')),
+        ButtonSegment(value: 'MEDIUM', label: Text('Medium')),
+      ],
+      selected: {_difficulty},
+      onSelectionChanged: lobby.pending
+          ? null
+          : (value) => setState(() => _difficulty = value.first),
+    ),
+    const SizedBox(height: 12),
+    FilledButton.icon(
+      onPressed: lobby.pending
+          ? null
+          : () async {
+              if (await _saveEntry()) {
+                await ref
+                    .read(lobbyProvider.notifier)
+                    .createPractice(difficulty: _difficulty);
+              }
+            },
+      icon: const Icon(Icons.play_arrow),
+      label: const Text('Start practice game'),
+    ),
+  ];
+
+  List<Widget> _multiplayer(LobbyView lobby) => [
+    FilledButton.icon(
+      onPressed: lobby.pending
+          ? null
+          : () async {
+              if (await _saveEntry()) {
+                await ref.read(lobbyProvider.notifier).create();
+              }
+            },
+      icon: const Icon(Icons.add),
+      label: const Text('Create private table'),
+    ),
+    const Padding(
+      padding: EdgeInsets.symmetric(vertical: 16),
+      child: Text('or join your friends', textAlign: TextAlign.center),
+    ),
+    TextFormField(
+      controller: _code,
+      enabled: !lobby.pending,
+      textCapitalization: TextCapitalization.characters,
+      maxLength: 32,
+      decoration: const InputDecoration(
+        labelText: 'Invitation code',
+        hintText: 'ABCDE-FGHJK',
+        border: OutlineInputBorder(),
+      ),
+    ),
+    OutlinedButton.icon(
+      onPressed: lobby.pending
+          ? null
+          : () async {
+              if (await _saveEntry()) {
+                await ref.read(lobbyProvider.notifier).join();
+              }
+            },
+      icon: const Icon(Icons.group_add_outlined),
+      label: const Text('Join table'),
+    ),
+  ];
+
+  /// A short summary in our own words of how the base game plays, for someone
+  /// sitting down to it without the rulebook to hand.
+  List<Widget> _rules() {
+    const sections = [
+      (
+        'Winning',
+        'First to ten points. A settlement is one, a city two, and the longest '
+            'road and largest army are two each. Some development cards are a '
+            'point too, and those stay hidden until the game ends.',
+      ),
+      (
+        'Your turn',
+        'Roll both dice, then build, trade or play a card in any order, and end '
+            'the turn when you are done.',
+      ),
+      (
+        'Getting resources',
+        'Every hex has a number. When it is rolled, each settlement touching it '
+            'earns one card of that hex and each city earns two. The desert '
+            'never pays, and nor does a hex under the robber.',
+      ),
+      (
+        'Building',
+        'A road costs brick and lumber. A settlement adds wool and grain. A city '
+            'upgrades a settlement for two grain and three ore. A development '
+            'card costs wool, grain and ore. Settlements must sit two junctions '
+            'apart and connect to your own roads.',
+      ),
+      (
+        'Rolling a seven',
+        'Nobody collects. Anyone holding more than seven cards discards half, '
+            'then you move the robber onto a hex and steal one card, unseen, '
+            'from a player building there.',
+      ),
+      (
+        'Trading',
+        'Offer any cards to the table or to one player on your turn. With no '
+            'port, the bank takes four of a kind for one of anything; a port '
+            'makes that three, or two for its own resource.',
+      ),
+      (
+        'Development cards',
+        'A knight moves the robber. Three knights, and more than anyone else, '
+            'takes the largest army. Others give roads or resources. A card '
+            'cannot be played on the turn it is bought.',
+      ),
+      (
+        'Longest road',
+        'Five or more connected roads, and more than anyone else, takes it. '
+            'Another player can take it from you by building past your length.',
+      ),
+    ];
+    return [
+      for (final (title, body) in sections)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              Text(body, style: const TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
+    ];
+  }
+
   List<Widget> _table(LobbyView lobby, bool disabled) {
     final controller = ref.read(lobbyProvider.notifier);
     final settings = lobby.room!['settings'] as Map;
