@@ -276,11 +276,27 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
               ),
             if (connected) ...[
               const SizedBox(height: 8),
-              _modes(),
-              const SizedBox(height: 20),
-              if (_mode == 'PRACTICE') ..._practice(lobby),
-              if (_mode == 'MULTIPLAYER') ..._multiplayer(lobby),
-              if (_mode == 'RULES') ..._rules(),
+              ..._section(
+                'PRACTICE',
+                Icons.smart_toy_outlined,
+                'Practice',
+                'Play bots now',
+                () => _practice(lobby),
+              ),
+              ..._section(
+                'MULTIPLAYER',
+                Icons.group_outlined,
+                'Multiplayer',
+                'Play with friends',
+                () => _multiplayer(lobby),
+              ),
+              ..._section(
+                'RULES',
+                Icons.menu_book_outlined,
+                'How to play',
+                'The short version',
+                _rules,
+              ),
             ],
             const SizedBox(height: 16),
             const Text(
@@ -293,76 +309,81 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
     ),
   );
 
-  /// Three ways in, side by side, so the choice is visible before anything is
-  /// typed. They wrap to one per line on a narrow phone.
-  Widget _modes() => LayoutBuilder(
-    builder: (context, constraints) {
-      const modes = [
-        ('PRACTICE', Icons.smart_toy_outlined, 'Practice', 'Play bots now'),
-        (
-          'MULTIPLAYER',
-          Icons.group_outlined,
-          'Multiplayer',
-          'Play with friends',
-        ),
-        ('RULES', Icons.menu_book_outlined, 'How to play', 'The short version'),
-      ];
-      final wide = constraints.maxWidth >= 380;
-      final width = wide
-          ? (constraints.maxWidth - 16) / 3
-          : constraints.maxWidth;
-      return Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final (value, icon, title, subtitle) in modes)
-            SizedBox(
-              width: width,
-              child: _modeTile(value, icon, title, subtitle),
-            ),
-        ],
-      );
-    },
-  );
-
-  Widget _modeTile(String value, IconData icon, String title, String subtitle) {
-    final chosen = _mode == value;
-    return Material(
-      color: chosen ? const Color(0xffe4efe9) : const Color(0xfffdfbf4),
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: () => setState(() => _mode = value),
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          decoration: BoxDecoration(
+  /// Three ways in, stacked, each opening where it stands. A vertical list
+  /// keeps the choice readable on a phone, and opening in place keeps a
+  /// section's options next to the heading they belong to.
+  List<Widget> _section(
+    String value,
+    IconData icon,
+    String title,
+    String subtitle,
+    List<Widget> Function() body,
+  ) {
+    final open = _mode == value;
+    return [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Material(
+          color: open ? const Color(0xffe4efe9) : const Color(0xfffdfbf4),
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            onTap: () => setState(() => _mode = open ? '' : value),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: chosen ? const Color(0xff256f61) : const Color(0xffe0dac8),
-              width: chosen ? 2 : 1,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: open
+                      ? const Color(0xff256f61)
+                      : const Color(0xffe0dac8),
+                  width: open ? 2 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, color: const Color(0xff256f61)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xff5f7570),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    open ? Icons.expand_less : Icons.expand_more,
+                    color: const Color(0xff5f7570),
+                  ),
+                ],
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: const Color(0xff256f61)),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-                overflow: TextOverflow.ellipsis,
-              ),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 12, color: Color(0xff5f7570)),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
           ),
         ),
       ),
-    );
+      if (open)
+        Padding(
+          padding: const EdgeInsets.only(left: 4, right: 4, bottom: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: body(),
+          ),
+        ),
+    ];
   }
 
   List<Widget> _practice(LobbyView lobby) => [

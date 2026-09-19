@@ -66,12 +66,17 @@ void main() {
       expect(find.text('Start practice game'), findsOneWidget);
       expect(find.text('Create private table'), findsNothing);
 
+      // Stacked sections push later headings below the fold on a phone.
+      await t.ensureVisible(find.text('Multiplayer'));
+      await t.pumpAndSettle();
       await t.tap(find.text('Multiplayer'));
       await t.pumpAndSettle();
       expect(find.text('Create private table'), findsOneWidget);
       expect(find.text('Join table'), findsOneWidget);
       expect(find.text('Start practice game'), findsNothing);
 
+      await t.ensureVisible(find.text('How to play'));
+      await t.pumpAndSettle();
       await t.tap(find.text('How to play'));
       await t.pumpAndSettle();
       expect(find.text('Winning'), findsOneWidget);
