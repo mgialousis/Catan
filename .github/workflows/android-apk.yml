@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -111,10 +111,33 @@ jobs:
           retention-days: 30
           compression-level: 0
 
+      # A build artifact needs a signed-in GitHub account to download, whatever
+      # the repository's visibility. A release asset does not, so the APK is
+      # published to one rolling release whose URL never changes.
+      - name: Publish the APK where anyone can download it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: android-latest
+        run: |
+          notes="Signed Android build of \`${GITHUB_SHA:0:7}\`, replaced by each build of main.
+          Verify with SHA256SUMS before installing. Android blocks sideloading until
+          you allow it for the app you install from."
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --title 'Latest Android build' --notes "$notes" --prerelease
+          gh release edit "$TAG" --notes "$notes"
+          gh release upload "$TAG" \
+            apps/mobile/build/apk-artifact/island-table.apk \
+            apps/mobile/build/apk-artifact/SHA256SUMS --clobber
+
       - name: Link download
         env:
           APK_ARTIFACT_URL: ${{ steps.apk.outputs.artifact-url }}
-        run: printf 'Download the signed APK from [this build artifact](%s).\n' "$APK_ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/android-latest/island-table.apk
+        run: |
+          {
+            printf 'Download without signing in: [island-table.apk](%s)\n\n' "$RELEASE_URL"
+            printf 'Or from [this build artifact](%s), which needs a GitHub account.\n' "$APK_ARTIFACT_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary signing files
         if: always()
