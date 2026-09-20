@@ -680,11 +680,13 @@ class _GameScreenState extends ConsumerState<GameScreen>
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (final entry in cost.entries)
-                      for (var n = 0; n < entry.value; n++)
+                    // Ordered by resourceTypes, not by the cost map, so a cost
+                    // reads in the same order as the hand it is paid from.
+                    for (final resource in resourceTypes)
+                      for (var n = 0; n < (cost[resource] ?? 0); n++)
                         Padding(
                           padding: const EdgeInsets.only(right: 1),
-                          child: ResourceIcon(entry.key, size: 15),
+                          child: ResourceIcon(resource, size: 15),
                         ),
                   ],
                 ),

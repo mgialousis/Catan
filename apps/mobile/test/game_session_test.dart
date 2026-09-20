@@ -370,7 +370,33 @@ void main() {
       ),
       findsNWidgets(2),
     );
+    // Wood before brick, the same order the hand and the trade sheet use.
+    final lumber = t.getCenter(
+      find.descendant(
+        of: road,
+        matching: find.byWidgetPredicate(
+          (w) => w is ResourceIcon && w.resource == 'lumber',
+        ),
+      ),
+    );
+    final brick = t.getCenter(
+      find.descendant(
+        of: road,
+        matching: find.byWidgetPredicate(
+          (w) => w is ResourceIcon && w.resource == 'brick',
+        ),
+      ),
+    );
+    expect(
+      lumber.dx,
+      lessThan(brick.dx),
+      reason: 'a cost reads in the same order as the hand it is paid from',
+    );
     expect(t.takeException(), isNull);
     await t.pumpWidget(const SizedBox());
+  });
+
+  test('the hand, costs and trade sheet share one display order', () {
+    expect(resourceTypes, ['lumber', 'brick', 'wool', 'grain', 'ore']);
   });
 }

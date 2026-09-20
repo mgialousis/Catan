@@ -1,7 +1,9 @@
 import '../core/protocol.dart';
 
 typedef JsonMap = Map<String, dynamic>;
-const resourceTypes = ['brick', 'lumber', 'wool', 'grain', 'ore'];
+// Display order everywhere: the hand, the costs on an action, the bank and
+// the trade sheet all read from this one list.
+const resourceTypes = ['lumber', 'brick', 'wool', 'grain', 'ore'];
 JsonMap object(Object? value) => Map<String, dynamic>.from(value as Map);
 Map<String, int> resources([Object? value]) => {
   for (final r in resourceTypes)
