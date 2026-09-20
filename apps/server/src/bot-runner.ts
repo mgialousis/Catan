@@ -123,16 +123,23 @@ export interface PacedMove { commandType: string; activity: readonly unknown[]; 
  * table busy for as long as its own presentation lasts, whoever made it, and
  * the bot waits for the last of them.
  */
-export function botReadyAt(recent: readonly PacedMove[], updatedAtMs: number): number {
+export function botReadyAt(recent: readonly PacedMove[], updatedAtMs: number, phase?: string): number {
   if (!recent.length) return updatedAtMs + BOT_BASE_PACE_MS;
   let ready = updatedAtMs;
-  for (const move of recent) ready = Math.max(ready, move.atMs + botPace(move.commandType, move.activity));
+  for (const move of recent) ready = Math.max(ready, move.atMs + botPace(move.commandType, move.activity, phase));
   return ready;
 }
 
-export function botPace(commandType: string | null, activity: readonly unknown[] = []): number {
+export function botPace(commandType: string | null, activity: readonly unknown[] = [], phase?: string): number {
   if (commandType === null) return BOT_BASE_PACE_MS;
-  if (BUILDS.includes(commandType)) return 2 * CAMERA_MS + HOLD_MS + PRESENTATION_MARGIN_MS;
+  if (BUILDS.includes(commandType)) {
+    // Opening placements come one after another with nothing else happening, so
+    // the client blinks them where they stand instead of moving the camera to
+    // each. Waiting out a close-up nobody is being shown would only make the
+    // opening drag.
+    const setup = phase?.startsWith('SETUP_') ?? false;
+    return (setup ? HOLD_MS : 2 * CAMERA_MS + HOLD_MS) + PRESENTATION_MARGIN_MS;
+  }
   if (commandType !== 'ROLL_DICE') return BOT_BASE_PACE_MS;
   // One icon flies per card delivered, so the payout's length is the number of
   // cards the roll actually paid out, after bank shortages and the robber.

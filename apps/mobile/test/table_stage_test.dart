@@ -1064,4 +1064,41 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('opening placements blink where they are, camera still', (
+    tester,
+  ) async {
+    final f = rollFixture();
+    // The same board, in the opening round.
+    final opening = object(jsonDecode(jsonEncode(f.after.json)));
+    opening['publicState']['phase'] = 'SETUP_SETTLEMENT';
+    final board = await pumpBoard(
+      tester,
+      GameSnapshot.parse(opening, uiProtocol),
+    );
+    final still = board.camera.value.clone();
+    final road = placedRoad(
+      GameSnapshot.parse(opening, uiProtocol),
+      mine: false,
+    );
+    road.json['publicState']['phase'] = 'SETUP_ROAD';
+    board.show(road.json);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(
+      flashOf(tester),
+      greaterThan(0),
+      reason: 'the piece still has to be pointed out',
+    );
+    expect(
+      board.camera.value,
+      still,
+      reason: 'a rapid round of placements should not swing the camera about',
+    );
+    // Who placed it is still named; only the camera move is dropped.
+    expect(find.byKey(const Key('build-focus-label')), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(board.camera.value, still);
+    expect(tester.takeException(), isNull);
+  });
 }

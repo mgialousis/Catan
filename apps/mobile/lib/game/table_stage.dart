@@ -12,13 +12,22 @@ import 'roll_presentation.dart';
 class _Scene {
   _Scene.roll(this.snapshot) : piece = null, focus = false;
   _Scene.piece(this.snapshot, this.piece)
-    // Your own piece only blinks. You just placed it, so moving the camera off
-    // what you are doing would be in the way rather than informative.
-    : focus = piece!.playerId != snapshot.playerId;
+    // Your own piece only blinks: you just placed it, so moving the camera off
+    // what you are doing would be in the way rather than informative. Setup is
+    // the same -- it is a rapid round of placements with nothing else
+    // happening, and a close-up of each one would be constant motion.
+    : focus =
+          piece!.playerId != snapshot.playerId &&
+          !snapshot.phase.startsWith('SETUP_');
   final GameSnapshot snapshot;
   final PlacedPiece? piece;
+
+  /// Whether the camera moves to the piece. It always blinks either way.
   final bool focus;
   bool get isRoll => piece == null;
+
+  /// Somebody else's placement is worth naming even when the camera stays put.
+  bool get mine => piece!.playerId == snapshot.playerId;
 }
 
 /// The table's animation is local presentation; it never delays game commands.
@@ -480,7 +489,7 @@ class _TableStageState extends State<TableStage>
   Widget _overlay() {
     final showing = _showing;
     if (showing != null && !showing.isRoll) {
-      return showing.focus ? _pieceLabel(showing) : const SizedBox.shrink();
+      return showing.mine ? const SizedBox.shrink() : _pieceLabel(showing);
     }
     final roll = _roll;
     final scene = _box(_scene), surface = _box(_surface);

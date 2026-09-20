@@ -376,7 +376,7 @@ export class Games {
       // client has finished presenting the previous move: a roll's payout is
       // never cut short by the next roll.
       const recent = (await db.query('SELECT command_type,public_activity,created_at FROM app.move_logs WHERE room_id=$1 ORDER BY sequence DESC LIMIT 6', [job.roomId])).rows;
-      const readyAt = botReadyAt(recent.map(move => ({ commandType: move.command_type, activity: move.public_activity, atMs: move.created_at.getTime() })), row.updated_at.getTime());
+      const readyAt = botReadyAt(recent.map(move => ({ commandType: move.command_type, activity: move.public_activity, atMs: move.created_at.getTime() })), row.updated_at.getTime(), state.publicState.phase);
       if (Date.parse(now) < readyAt) return 'EARLY' as const;
       const move = botMove(state, job, botDifficulty(room.settings), now, engineContext().random);
       if (!move) return 'STALE' as const;

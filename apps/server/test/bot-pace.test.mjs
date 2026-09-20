@@ -103,3 +103,25 @@ test('an old move no longer holds the table', () => {
   assert.equal(botReadyAt(recent, 90_000), 90_000 + BOT_BASE_PACE_MS);
   assert.equal(botReadyAt([], 90_000), 90_000 + BOT_BASE_PACE_MS);
 });
+
+test('opening placements wait only for the blink, not a close-up', () => {
+  for (const phase of ['SETUP_SETTLEMENT', 'SETUP_ROAD']) {
+    for (const type of ['BUILD_ROAD', 'BUILD_SETTLEMENT']) {
+      assert.equal(botPace(type, [], phase), 1300 + MARGIN);
+      assert.ok(
+        botPace(type, [], phase) < botPace(type),
+        `${type} in ${phase} should not wait out a camera move`,
+      );
+    }
+  }
+  // Once the opening is over the close-up is back.
+  assert.equal(botPace('BUILD_CITY', [], 'ACTION'), pieceAnimationMs + MARGIN);
+  assert.equal(botPace('BUILD_CITY', []), pieceAnimationMs + MARGIN);
+});
+
+test('a payout is unaffected by the phase', () => {
+  assert.equal(
+    botPace('ROLL_DICE', payout(3), 'SETUP_ROAD'),
+    botPace('ROLL_DICE', payout(3)),
+  );
+});
