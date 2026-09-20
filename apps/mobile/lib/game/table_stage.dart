@@ -340,45 +340,32 @@ class _TableStageState extends State<TableStage>
       child: Stack(
         key: _surface,
         children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final columns = constraints.maxWidth >= 560
-                      ? 4
-                      : constraints.maxWidth >= 280 &&
-                            MediaQuery.textScalerOf(context).scale(12) <= 18
-                      ? 2
-                      : 1;
-                  final width =
-                      (constraints.maxWidth - (columns - 1) * 6) / columns;
-                  return Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final player in s.orderedPlayers)
-                        SizedBox(
-                          width: width,
-                          child: PlayerBadge(
-                            key: _players.putIfAbsent(
-                              player['id'] as String,
-                              GlobalKey.new,
-                            ),
-                            player: player,
-                            own: player['id'] == s.playerId,
-                            active: player['id'] == s.public['activePlayerId'],
-                            onTap: () => widget.onPlayer(player),
-                          ),
-                        ),
-                    ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Wide enough for two badges and clear water between them; below
+              // that they would sit over the coastline, so keep the row.
+              final corners = constraints.maxWidth >= 340;
+              Widget badge(JsonMap player, {required bool compact}) =>
+                  PlayerBadge(
+                    key: _players.putIfAbsent(
+                      player['id'] as String,
+                      GlobalKey.new,
+                    ),
+                    player: player,
+                    own: player['id'] == s.playerId,
+                    active: player['id'] == s.public['activePlayerId'],
+                    onTap: () => widget.onPlayer(player),
+                    compact: compact,
                   );
-                },
-              ),
-              const SizedBox(height: 4),
-              IslandBoard(
+              final board = IslandBoard(
                 snapshot: s,
                 producing: _rings,
+                corners: corners
+                    ? [
+                        for (final player in s.orderedPlayers)
+                          badge(player, compact: true),
+                      ]
+                    : const [],
                 targets: widget.targets,
                 selected: widget.selected,
                 onTarget: widget.onTarget,
@@ -387,8 +374,34 @@ class _TableStageState extends State<TableStage>
                 sceneKey: _scene,
                 viewportKey: _viewport,
                 onInteraction: _cancel,
-              ),
-            ],
+              );
+              if (corners) return board;
+              final columns =
+                  constraints.maxWidth >= 280 &&
+                      MediaQuery.textScalerOf(context).scale(12) <= 18
+                  ? 2
+                  : 1;
+              final width =
+                  (constraints.maxWidth - (columns - 1) * 6) / columns;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final player in s.orderedPlayers)
+                        SizedBox(
+                          width: width,
+                          child: badge(player, compact: false),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  board,
+                ],
+              );
+            },
           ),
           Positioned.fill(
             child: IgnorePointer(
@@ -619,10 +632,15 @@ class PlayerBadge extends StatelessWidget {
     required this.own,
     required this.active,
     required this.onTap,
+    this.compact = false,
   });
   final JsonMap player;
   final bool own, active;
   final VoidCallback onTap;
+
+  /// Sized to sit in a corner of the map: who and how close to winning. The
+  /// other three counts stay one tap away rather than crowding the board.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -648,81 +666,120 @@ class PlayerBadge extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(12),
           child: ExcludeSemantics(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 15,
-                        backgroundColor: colour,
-                        child: Icon(
-                          bot ? Icons.smart_toy_outlined : Icons.person_outline,
-                          color: inkOn(colour),
-                          size: 20,
+            child: compact
+                ? _corner(colour, bot)
+                : Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 15,
+                              backgroundColor: colour,
+                              child: Icon(
+                                bot
+                                    ? Icons.smart_toy_outlined
+                                    : Icons.person_outline,
+                                color: inkOn(colour),
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${player['nickname']}${own
+                                    ? ' · You'
+                                    : bot
+                                    ? ' · Bot'
+                                    : ''}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            if (active)
+                              Icon(Icons.arrow_right, color: colour, size: 18),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '${player['nickname']}${own
-                              ? ' · You'
-                              : bot
-                              ? ' · Bot'
-                              : ''}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 9,
+                          runSpacing: 4,
+                          children: [
+                            _stat(
+                              context,
+                              Icons.star_rounded,
+                              player['publicPoints'],
+                              'Points',
+                            ),
+                            _stat(
+                              context,
+                              Icons.style_outlined,
+                              player['resourceCardCount'],
+                              'Resource cards',
+                            ),
+                            _stat(
+                              context,
+                              Icons.credit_card,
+                              player['developmentCardCount'],
+                              'Development cards',
+                            ),
+                            _stat(
+                              context,
+                              Icons.shield_outlined,
+                              player['playedKnights'],
+                              'Knights played',
+                            ),
+                          ],
                         ),
-                      ),
-                      if (active)
-                        Icon(Icons.arrow_right, color: colour, size: 18),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 9,
-                    runSpacing: 4,
-                    children: [
-                      _stat(
-                        context,
-                        Icons.star_rounded,
-                        player['publicPoints'],
-                        'Points',
-                      ),
-                      _stat(
-                        context,
-                        Icons.style_outlined,
-                        player['resourceCardCount'],
-                        'Resource cards',
-                      ),
-                      _stat(
-                        context,
-                        Icons.credit_card,
-                        player['developmentCardCount'],
-                        'Development cards',
-                      ),
-                      _stat(
-                        context,
-                        Icons.shield_outlined,
-                        player['playedKnights'],
-                        'Knights played',
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
           ),
         ),
       ),
     );
   }
+
+  Widget _corner(Color colour, bool bot) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CircleAvatar(
+          radius: 10,
+          backgroundColor: colour,
+          child: Icon(
+            bot ? Icons.smart_toy_outlined : Icons.person_outline,
+            color: inkOn(colour),
+            size: 13,
+          ),
+        ),
+        const SizedBox(width: 5),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 64),
+          child: Text(
+            '${player['nickname']}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Icon(Icons.star_rounded, size: 13, color: colour),
+        Text(
+          '${player['publicPoints']}',
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+        ),
+      ],
+    ),
+  );
 
   Widget _stat(
     BuildContext context,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -316,15 +317,19 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
   Widget _table(GameView view, GameSnapshot snapshot) => LayoutBuilder(
     builder: (context, constraints) {
-      final landscape =
-          constraints.maxWidth >= 740 && constraints.maxHeight < 600;
+      // Everything reads top to bottom: the map owns the full width and the
+      // actions follow underneath it, in both orientations. Putting the panels
+      // beside the map only ever shrank the thing people are looking at.
+      Widget inset(Widget child) => Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: child,
+          ),
+        ),
+      );
       final board = TableStage(
-        // The panels above the board come and go -- a sending notice, banners,
-        // the countdown -- and an unkeyed list child is matched by position, so
-        // every one of those shifts used to rebuild the board's element and
-        // lose the roll it was presenting. Your own roll always arrives with a
-        // pending notice, which is why it was the one that never animated.
-        key: const Key('table-stage'),
         activity: view.activity,
         connected: view.connected,
         onPlayer: (player) => _points(snapshot, player),
@@ -339,73 +344,86 @@ class _GameScreenState extends ConsumerState<GameScreen>
         selected: view.target,
         onTarget: _controller.target,
       );
-      final panels = ListView(
+      return ListView(
         key: const Key('game-scroll'),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        // No side padding: the map runs edge to edge and every other panel
+        // insets itself, so the board is the widest thing on the screen.
+        padding: const EdgeInsets.symmetric(vertical: 20),
         children: [
-          _header(snapshot),
-          if (view.message != null) _banner(view.message!, Icons.info_outline),
-          if (snapshot.vacantSeats.isNotEmpty) _vacancies(view, snapshot),
+          inset(_header(snapshot)),
+          if (view.message != null)
+            inset(_banner(view.message!, Icons.info_outline)),
+          if (snapshot.vacantSeats.isNotEmpty)
+            inset(_vacancies(view, snapshot)),
           if (snapshot.paused && snapshot.vacantSeats.isEmpty)
-            _banner(
-              (snapshot.public['pauseReasons'] as List).any(
-                    (r) => r != 'DISCONNECTED',
-                  )
-                  ? 'Game saved and paused. The host can resume when required players are online.'
-                  : 'Waiting for a required player to reconnect. Your remaining time is saved.',
-              Icons.pause_circle_outline,
+            inset(
+              _banner(
+                (snapshot.public['pauseReasons'] as List).any(
+                      (r) => r != 'DISCONNECTED',
+                    )
+                    ? 'Game saved and paused. The host can resume when required players are online.'
+                    : 'Waiting for a required player to reconnect. Your remaining time is saved.',
+                Icons.pause_circle_outline,
+              ),
             ),
           if (!view.connected)
-            _banner('Reconnecting to your table…', Icons.wifi_off),
-          if (view.pending != null) _pending(view),
+            inset(_banner('Reconnecting to your table…', Icons.wifi_off)),
+          if (view.pending != null) inset(_pending(view)),
           if (!snapshot.paused &&
               (snapshot.public['turnDeadline'] != null ||
                   (snapshot.public['discardDeadlines']
                           as Map)[snapshot.playerId] !=
                       null))
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: GameCountdown(
-                serverTime:
-                    view.serverTime ?? snapshot.json['serverTime'] as String,
-                deadline:
-                    ((snapshot.public['discardDeadlines']
-                                as Map)[snapshot.playerId] ??
-                            snapshot.public['turnDeadline'])
-                        as String,
-                discard: snapshot.phase == 'DISCARD_REQUIRED',
+            inset(
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: GameCountdown(
+                  serverTime:
+                      view.serverTime ?? snapshot.json['serverTime'] as String,
+                  deadline:
+                      ((snapshot.public['discardDeadlines']
+                                  as Map)[snapshot.playerId] ??
+                              snapshot.public['turnDeadline'])
+                          as String,
+                  discard: snapshot.phase == 'DISCARD_REQUIRED',
+                ),
               ),
             ),
           const SizedBox(height: 12),
-          if (!landscape) board,
-          const SizedBox(height: 16),
-          if (snapshot.complete) _result(snapshot) else _prompt(view, snapshot),
-          const SizedBox(height: 16),
-          _players(snapshot),
-          const SizedBox(height: 16),
-          _hand(view, snapshot),
-          const SizedBox(height: 16),
-          _activity(view, snapshot),
-        ],
-      );
-      if (landscape) {
-        return Row(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(12),
-                child: board,
+          // Wider than the panels. Capped so a desktop window does not blow the
+          // island up past being one glance, and, on a short landscape screen,
+          // so it fits the height: sizing it to the width there would push most
+          // of the map below the fold, which is worse than a smaller whole one.
+          //
+          // The key belongs on the list child itself. The panels above it come
+          // and go -- a sending notice, banners, the countdown -- and unkeyed
+          // list children are matched by position, so every one of those shifts
+          // would otherwise rebuild this subtree and lose the roll it is
+          // presenting. Your own roll always arrives with a pending notice,
+          // which is why it was the one that never animated.
+          Center(
+            key: const Key('table-stage'),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: math.min(
+                  820,
+                  constraints.maxHeight * boardSize.aspectRatio,
+                ),
               ),
+              child: board,
             ),
-            Expanded(child: panels),
-          ],
-        );
-      }
-      return Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 620),
-          child: panels,
-        ),
+          ),
+          const SizedBox(height: 16),
+          inset(
+            snapshot.complete ? _result(snapshot) : _prompt(view, snapshot),
+          ),
+          const SizedBox(height: 16),
+          inset(_players(snapshot)),
+          const SizedBox(height: 16),
+          inset(_hand(view, snapshot)),
+          const SizedBox(height: 16),
+          inset(_activity(view, snapshot)),
+        ],
       );
     },
   );

@@ -217,6 +217,7 @@ class IslandBoard extends StatefulWidget {
     this.selected,
     required this.onTarget,
     this.producing,
+    this.corners = const [],
     this.menu,
     this.transformationController,
     this.sceneKey,
@@ -232,6 +233,11 @@ class IslandBoard extends StatefulWidget {
   /// roll; an animating table overrides it with the roll it is presenting, so
   /// the rings and the dice on screen always describe the same roll.
   final Set<String>? producing;
+
+  /// Overlaid on the four corners of the water, in order: top-left, top-right,
+  /// bottom-left, bottom-right. The corners are open sea on every generated
+  /// board, so seats can sit there instead of taking a row above the map.
+  final List<Widget> corners;
 
   /// Optional control placed beside the title, so the table's own actions sit
   /// with the board rather than scattered through the panels below it.
@@ -456,11 +462,28 @@ class _IslandBoardState extends State<IslandBoard>
           ),
         ),
       );
+      // The badges sit above the map in the stack but outside the viewer, so
+      // they neither pan nor zoom with the island.
+      final water = widget.corners.isEmpty
+          ? island
+          : Stack(
+              children: [
+                island,
+                for (final (index, corner) in widget.corners.indexed)
+                  Positioned(
+                    left: index.isEven ? 8 : null,
+                    right: index.isEven ? null : 8,
+                    top: index < 2 ? 8 : null,
+                    bottom: index < 2 ? null : 8,
+                    child: corner,
+                  ),
+              ],
+            );
       return Column(
         children: [
           Row(children: header),
           // Flexible only when the parent bounds our height; a scroll view leaves it unbounded.
-          if (outer.maxHeight.isFinite) Flexible(child: island) else island,
+          if (outer.maxHeight.isFinite) Flexible(child: water) else water,
           const Padding(
             padding: EdgeInsets.only(top: 8),
             child: Text(
