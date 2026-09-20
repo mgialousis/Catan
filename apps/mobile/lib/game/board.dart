@@ -502,13 +502,16 @@ class _IslandBoardState extends State<IslandBoard>
           Row(children: header),
           // Flexible only when the parent bounds our height; a scroll view leaves it unbounded.
           if (outer.maxHeight.isFinite) Flexible(child: water) else water,
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text(
-              'Pinch to zoom · drag to explore · tap a tile for details',
-              style: TextStyle(fontSize: 12, color: Color(0xff586b68)),
+          // On a short screen the island needs that height more than the hint
+          // does; the gestures are discoverable by trying them.
+          if (outer.maxWidth >= 340)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Pinch to zoom · drag to explore · tap a tile for details',
+                style: TextStyle(fontSize: 12, color: Color(0xff586b68)),
+              ),
             ),
-          ),
         ],
       );
     },

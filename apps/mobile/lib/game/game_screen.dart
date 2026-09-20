@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -390,13 +391,14 @@ class _GameScreenState extends ConsumerState<GameScreen>
               ),
             ),
           const SizedBox(height: 12),
-          // Wider than the panels, capped only so a desktop window does not
-          // blow the island up past being one glance.
+          // The whole island has to be on screen without scrolling, so the map
+          // is bounded by the height left after its own header row, and scaled
+          // down to fit when the screen is short. On a tall phone the width is
+          // what binds and nothing is given up; in landscape the map gets
+          // smaller rather than running off the bottom.
           //
-          // It is deliberately NOT fitted to the viewport height. Doing that
-          // shrank the map to about 320 logical pixels on an 800-wide phone in
-          // landscape -- tiny, and too narrow to carry the corner seats. A big
-          // map you scroll beats a small whole one.
+          // The corner seats survive this: a badge drops its name before it is
+          // given up, down to a 300-pixel board.
           //
           // The key belongs on the list child itself. The panels above it come
           // and go -- a sending notice, banners, the countdown -- and unkeyed
@@ -407,7 +409,17 @@ class _GameScreenState extends ConsumerState<GameScreen>
           Center(
             key: const Key('table-stage'),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 820),
+              constraints: BoxConstraints(
+                maxWidth: constraints.maxHeight.isFinite
+                    ? math.min(
+                        820,
+                        math.max(
+                          260,
+                          (constraints.maxHeight - 76) * boardSize.aspectRatio,
+                        ),
+                      )
+                    : 820,
+              ),
               child: board,
             ),
           ),

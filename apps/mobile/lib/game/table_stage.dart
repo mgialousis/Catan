@@ -372,7 +372,13 @@ class _TableStageState extends State<TableStage>
               // that they would sit over the coastline, so keep the row.
               // A corner badge shrinks before it is given up: the name goes
               // first, which keeps the seats on the map down to narrow phones.
-              final corners = constraints.maxWidth >= 300;
+              //
+              // The threshold has to stay below any width the layout can hand
+              // us, or it feeds back: a short screen scales the map down, the
+              // badges fall out of the corners into a tall row above it, and
+              // that row pushes the map off the bottom -- which is the very
+              // thing the scaling was for.
+              final corners = constraints.maxWidth >= 200;
               final named = constraints.maxWidth >= 380;
               // Each extra count widens a corner badge, and two of them share
               // the top edge with the middle port. Add them only as the board
