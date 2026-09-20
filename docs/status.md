@@ -1,7 +1,7 @@
 # Current project status
 
-Updated 2026-09-20 (Europe/Zurich), after the roll-feedback release and its
-two reported-defect fixes. Use this file for handoff; dated verification documents retain
+Updated 2026-09-20 (Europe/Zurich), after the roll-feedback release, its two
+reported-defect fixes, and the presentation/layout work that followed. Use this file for handoff; dated verification documents retain
 historical evidence and are not a statement of the current release.
 
 ## Roll feedback release — 2026-09-20
@@ -38,13 +38,32 @@ with it. A bot's roll sets no pending notice, which is why only your own was
 affected. The cyan production rings were read from the live snapshot while the
 overlay presented an older queued roll, and ending a turn emptied them from
 under a presentation still running; they now follow the roll being presented,
-and rolls are no longer queued — a newer one takes over. The deployed
+and rolls are no longer queued. The deployed
 `main.dart.js` and the packaged `libapp.so` were both searched for the keyed
 board, so the fix shipped rather than a cached build; hosted preflight passed at
 64 ms median / 142 ms p95, and all three saved games were unchanged either side
-of the static deployment. Neither fix has yet been watched by a person.
+of the static deployment.
 
-Validation: 254 Node tests and 345 Flutter tests pass; Flutter analysis and
+Four further commits followed from watching a practice game, live as `fe0fc39`
+on web and signed Android **build 21**, with the API on `9f5a08b`. Presentations
+now play strictly in order — roll, payout, then the next roll — and bot pacing on
+the server derives from the previous move so the ordering is real rather than
+buffered; practice games run slower as a result. A roll hands the board back
+centred. Another seat placing a piece gets a held close-up naming who built
+what, and every newly placed piece pulses twice where it stands. The map owns
+the screen in both orientations, with the four seats and their counts moved into
+the corners of the water and the turn line folded onto the board's header row.
+
+Two things were caught by checking rather than assuming, and both are recorded
+in the [release verification](release-2026-09-20.md): bot pacing silently read
+the wrong field name and gave every roll the dice-only pause, and Render served
+a byte-identical stale bundle while reporting the deploy live. Static deploys
+now clear the build cache, and a deploy is confirmed by finding the change
+itself in the artefact — including a negative check that the replaced text is
+gone. None of this has yet been watched by a person on a handset or in a
+browser.
+
+Validation: 259 Node tests and 354 Flutter tests pass; Flutter analysis and
 `git diff --check` pass. Rendered portrait frames were inspected. Regression tests
 cover retained board artwork during the animation, touch cancellation, reduced
 motion, superseded rolls, reconnect gaps, and payouts. Hosted preflight passed after deployment. Both previously paused games retained
@@ -57,16 +76,16 @@ smoothness remains to be checked. See [release verification](release-2026-09-20.
   History was audited for credentials first; only `.env.example` placeholders and
   deliberately fake test fixtures matched. Phases 1–6 are implemented and a solo
   practice mode against bots ships on top of them; Phase 7 acceptance remains partial.
-- Web: `31b85ac`,
+- Web: `fe0fc39`,
   [live](https://dashboard.render.com/static/srv-dajgfdnqj5pc73dhl33g).
-- API: `812d023`,
+- API: `9f5a08b`,
   [live](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330).
 - Android: signed build published to a rolling release. Downloads **without a
   GitHub account**, unlike a build artifact, which requires one whatever the
   repository's visibility:
   https://github.com/mgialousis/Catan/releases/download/android-latest/island-table.apk
-  Build 19 (`31b85ac`, version code `1019` read out of the package) verified
-  anonymously at 55,226,920 bytes against the adjacent `SHA256SUMS`, with the
+  Build 21 (`fe0fc39`, version code `1021` read out of the package) verified
+  anonymously at 55,243,232 bytes against the adjacent `SHA256SUMS`, with the
   existing release signing certificate, so an update install retains app data. Each build of
   `main` replaces both files; the URL does not change.
 - Both Render services are Frankfurt, Free plan, one instance, automatic deploys
