@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { botPace, botReadyAt, BOT_BASE_PACE_MS } from '../dist/bot-runner.js';
+
+// Animation lengths as apps/mobile/lib/game/table_stage.dart defines them, and
+// the slack the pacing is required to keep on top of each.
+const MARGIN = 700;
+const rollAnimationMs = cards =>
+  cards === 0 ? 2800 : 2800 + 600 + cards * 1000 + (cards - 1) * 160 + 200 + 600;
+const pieceAnimationMs = 2 * 600 + 1300;
 import { projectEffects } from '../../../packages/game-engine/dist/index.js';
 
 // Built through the same projection the server persists with, so this cannot
@@ -27,10 +34,10 @@ test('a roll is left alone until its payout has finished flying', () => {
 });
 
 test('a roll that pays nobody waits only for the dice', () => {
-  assert.equal(botPace('ROLL_DICE', []), 2800);
+  assert.equal(botPace('ROLL_DICE', []), 2800 + MARGIN);
   assert.equal(
     botPace('ROLL_DICE', projectEffects([{ type: 'PUBLIC_ACTIVITY', action: 'DICE_ROLLED', actorPlayerId: 'player-0', message: 'Rolled 7.' }], 'player-0').activity),
-    2800,
+    2800 + MARGIN,
   );
 });
 
@@ -42,6 +49,20 @@ test('payouts to several seats are counted together', () => {
 test('placing a piece is held long enough to be seen', () => {
   for (const type of ['BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY']) {
     assert.ok(botPace(type) > BOT_BASE_PACE_MS, `${type} should pause for the close-up`);
+  }
+});
+
+// The next seat must not start rolling or building while the table is still
+// showing the last move: pacing has to clear the animation, not merely match it.
+test('every paced move outlasts the animation it is waiting for', () => {
+  for (const type of ['BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY']) {
+    assert.equal(botPace(type), pieceAnimationMs + MARGIN);
+    assert.ok(botPace(type) > pieceAnimationMs, `${type} must clear its blink`);
+  }
+  for (const cards of [0, 1, 2, 3, 5, 8]) {
+    const pace = botPace('ROLL_DICE', cards ? payout(cards) : []);
+    assert.equal(pace, rollAnimationMs(cards) + MARGIN);
+    assert.ok(pace > rollAnimationMs(cards), `${cards} cards must clear the payout`);
   }
 });
 

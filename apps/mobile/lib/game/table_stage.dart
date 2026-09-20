@@ -68,8 +68,8 @@ class _TableStageState extends State<TableStage>
     animationBehavior: AnimationBehavior.preserve,
   )..addListener(_tick);
   _Scene? _showing;
-  // Presentations play in the order the table produced them. Bounded, because a
-  // long backlog would narrate a game nobody is still looking at.
+  // At most one presentation waits its turn; see _enqueue for why a backlog is
+  // dropped rather than played out.
   final _queue = <_Scene>[];
   GameSnapshot? _presented;
   final _pulse = ValueNotifier<double>(0);
@@ -140,8 +140,15 @@ class _TableStageState extends State<TableStage>
       _begin(scene);
       return;
     }
-    if (_queue.length == 4) _queue.removeAt(0);
-    _queue.add(scene);
+    // Something is still on screen although the table has moved on. Server
+    // pacing leaves room for each presentation to finish first, so this means
+    // the client fell behind -- a slow frame, a slow network. Hold only the
+    // newest: playing a backlog would blink a piece that was placed two moves
+    // ago while the next seat is already rolling, which is worse than missing
+    // one blink. The lag can therefore never exceed a single presentation.
+    _queue
+      ..clear()
+      ..add(scene);
   }
 
   void _begin(_Scene scene) {

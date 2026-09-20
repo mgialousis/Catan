@@ -1018,4 +1018,50 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  /// The table must never be blinking a piece from two moves ago while the
+  /// next seat is already rolling. Pacing leaves room for each presentation to
+  /// finish; if the client falls behind anyway, only the newest is kept.
+  testWidgets('a backlog is dropped rather than narrated late', (tester) async {
+    final f = rollFixture();
+    final board = await pumpBoard(tester, f.after);
+    var json = placedRoad(f.after, mine: false).json;
+    board.show(json);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const Key('build-focus-label')), findsOneWidget);
+    final first = tester.widget<IslandBoard>(find.byType(IslandBoard)).flashId;
+    // Two more pieces land while that close-up is still running.
+    final second = placedRoad(
+      GameSnapshot.parse(json, uiProtocol),
+      mine: false,
+    );
+    board.show(second.json);
+    await tester.pump();
+    final third = placedRoad(
+      GameSnapshot.parse(second.json, uiProtocol),
+      mine: false,
+    );
+    board.show(third.json);
+    await tester.pump();
+    expect(
+      tester.widget<IslandBoard>(find.byType(IslandBoard)).flashId,
+      first,
+      reason: 'The running close-up is not interrupted.',
+    );
+    // When it ends, the table shows the newest piece, not the one it skipped.
+    await tester.pump(const Duration(milliseconds: 2600));
+    expect(
+      tester.widget<IslandBoard>(find.byType(IslandBoard)).flashId,
+      third.edge,
+      reason: 'A skipped middle piece must not be blinked after the fact.',
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<IslandBoard>(find.byType(IslandBoard)).flashId,
+      isNull,
+      reason: 'Nothing is left blinking once the queue drains.',
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

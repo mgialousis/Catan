@@ -102,6 +102,14 @@ export function botMove(
  */
 const DICE_MS = 2800, CAMERA_MS = 600, FLIGHT_MS = 1000, GAP_MS = 160, PAD_MS = 200, HOLD_MS = 1300;
 export const BOT_BASE_PACE_MS = 900;
+/**
+ * Headroom over the animation itself. A client only starts presenting when the
+ * snapshot reaches it, so pacing the next move at exactly the length of the
+ * presentation leaves the blink or the payout still running when that move
+ * lands. Every paced move therefore waits for its presentation plus a network
+ * round trip's worth of slack, which also stops a backlog forming across a turn.
+ */
+const PRESENTATION_MARGIN_MS = 700;
 const BUILDS = ['BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY'];
 
 export interface PacedMove { commandType: string; activity: readonly unknown[]; atMs: number }
@@ -124,7 +132,7 @@ export function botReadyAt(recent: readonly PacedMove[], updatedAtMs: number): n
 
 export function botPace(commandType: string | null, activity: readonly unknown[] = []): number {
   if (commandType === null) return BOT_BASE_PACE_MS;
-  if (BUILDS.includes(commandType)) return 2 * CAMERA_MS + HOLD_MS;
+  if (BUILDS.includes(commandType)) return 2 * CAMERA_MS + HOLD_MS + PRESENTATION_MARGIN_MS;
   if (commandType !== 'ROLL_DICE') return BOT_BASE_PACE_MS;
   // One icon flies per card delivered, so the payout's length is the number of
   // cards the roll actually paid out, after bank shortages and the robber.
@@ -138,6 +146,6 @@ export function botPace(commandType: string | null, activity: readonly unknown[]
     if (!record || record.type !== 'RESOURCES_COLLECTED' || !record.resources) continue;
     for (const amount of Object.values(record.resources)) if (typeof amount === 'number') cards += amount;
   }
-  if (cards === 0) return DICE_MS;
-  return DICE_MS + CAMERA_MS + cards * FLIGHT_MS + (cards - 1) * GAP_MS + PAD_MS + CAMERA_MS;
+  if (cards === 0) return DICE_MS + PRESENTATION_MARGIN_MS;
+  return DICE_MS + CAMERA_MS + cards * FLIGHT_MS + (cards - 1) * GAP_MS + PAD_MS + CAMERA_MS + PRESENTATION_MARGIN_MS;
 }
