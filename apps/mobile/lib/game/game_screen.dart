@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -391,10 +390,13 @@ class _GameScreenState extends ConsumerState<GameScreen>
               ),
             ),
           const SizedBox(height: 12),
-          // Wider than the panels. Capped so a desktop window does not blow the
-          // island up past being one glance, and, on a short landscape screen,
-          // so it fits the height: sizing it to the width there would push most
-          // of the map below the fold, which is worse than a smaller whole one.
+          // Wider than the panels, capped only so a desktop window does not
+          // blow the island up past being one glance.
+          //
+          // It is deliberately NOT fitted to the viewport height. Doing that
+          // shrank the map to about 320 logical pixels on an 800-wide phone in
+          // landscape -- tiny, and too narrow to carry the corner seats. A big
+          // map you scroll beats a small whole one.
           //
           // The key belongs on the list child itself. The panels above it come
           // and go -- a sending notice, banners, the countdown -- and unkeyed
@@ -405,12 +407,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
           Center(
             key: const Key('table-stage'),
             child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: math.min(
-                  820,
-                  constraints.maxHeight * boardSize.aspectRatio,
-                ),
-              ),
+              constraints: const BoxConstraints(maxWidth: 820),
               child: board,
             ),
           ),

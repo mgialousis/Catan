@@ -363,7 +363,10 @@ class _TableStageState extends State<TableStage>
             builder: (context, constraints) {
               // Wide enough for two badges and clear water between them; below
               // that they would sit over the coastline, so keep the row.
-              final corners = constraints.maxWidth >= 340;
+              // A corner badge shrinks before it is given up: the name goes
+              // first, which keeps the seats on the map down to narrow phones.
+              final corners = constraints.maxWidth >= 300;
+              final named = constraints.maxWidth >= 380;
               // Each extra count widens a corner badge, and two of them share
               // the top edge with the middle port. Add them only as the board
               // grows wide enough to keep clear water between.
@@ -384,6 +387,7 @@ class _TableStageState extends State<TableStage>
                     onTap: () => widget.onPlayer(player),
                     compact: compact,
                     counts: counts,
+                    named: named,
                   );
               final board = IslandBoard(
                 snapshot: s,
@@ -738,6 +742,7 @@ class PlayerBadge extends StatelessWidget {
     required this.onTap,
     this.compact = false,
     this.counts = 2,
+    this.named = true,
   });
   final JsonMap player;
   final bool own, active;
@@ -747,6 +752,7 @@ class PlayerBadge extends StatelessWidget {
   /// is wide enough to carry them, and whatever is left stays one tap away.
   final bool compact;
   final int counts;
+  final bool named;
 
   @override
   Widget build(BuildContext context) {
@@ -866,17 +872,19 @@ class PlayerBadge extends StatelessWidget {
             size: 13,
           ),
         ),
-        const SizedBox(width: 5),
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: counts > 2 ? 48.0 : 64.0),
-          child: Text(
-            '${player['nickname']}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            softWrap: false,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
+        if (named) ...[
+          const SizedBox(width: 5),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: counts > 2 ? 48.0 : 64.0),
+            child: Text(
+              '${player['nickname']}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
+            ),
           ),
-        ),
+        ],
         for (final (icon, value) in [
           (Icons.star_rounded, player['publicPoints']),
           (Icons.style_outlined, player['resourceCardCount']),
