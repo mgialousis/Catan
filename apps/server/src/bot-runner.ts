@@ -110,10 +110,14 @@ export function botPace(commandType: string | null, activity: readonly unknown[]
   if (commandType !== 'ROLL_DICE') return BOT_BASE_PACE_MS;
   // One icon flies per card delivered, so the payout's length is the number of
   // cards the roll actually paid out, after bank shortages and the robber.
+  //
+  // These are projected entries as `projectEffects` stores them, where the
+  // engine's `action` has already been renamed to `type`. Reading `action`
+  // here silently counted zero cards and gave every roll the dice-only pause.
   let cards = 0;
   for (const entry of activity) {
-    const record = entry as { action?: unknown; resources?: Record<string, unknown> } | null;
-    if (!record || record.action !== 'RESOURCES_COLLECTED' || !record.resources) continue;
+    const record = entry as { type?: unknown; resources?: Record<string, unknown> } | null;
+    if (!record || record.type !== 'RESOURCES_COLLECTED' || !record.resources) continue;
     for (const amount of Object.values(record.resources)) if (typeof amount === 'number') cards += amount;
   }
   if (cards === 0) return DICE_MS;
