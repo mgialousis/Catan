@@ -277,7 +277,7 @@ void main() {
       'dice, resource art and zero collection fit $size with large text',
       (t) async {
         final port = await showGame(t, 'action', size: size, scale: 1.5);
-        expect(find.text('1 + 1 = 2'), findsOneWidget);
+        expect(find.textContaining('1 + 1 = 2'), findsOneWidget);
         final before = uiSnapshot('action');
         before['version']++;
         before['publicState']['hasRolled'] = false;
@@ -289,7 +289,7 @@ void main() {
         roll['publicState']['dice'] = [3, 4];
         port.emit('snapshot', roll);
         await t.pumpAndSettle();
-        expect(find.text('3 + 4 = 7'), findsOneWidget);
+        expect(find.textContaining('3 + 4 = 7'), findsOneWidget);
         await reveal(t, find.text('You collected this roll'));
         expect(
           find.text('No resources — a 7 activates the robber.'),

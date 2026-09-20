@@ -10,10 +10,14 @@ import 'roll_presentation.dart';
 /// One thing the table shows, played to completion before the next begins, so a
 /// roll, its payout and the following roll never overlap.
 class _Scene {
-  _Scene.roll(this.snapshot) : piece = null;
-  _Scene.piece(this.snapshot, this.piece);
+  _Scene.roll(this.snapshot) : piece = null, focus = false;
+  _Scene.piece(this.snapshot, this.piece)
+    // Your own piece only blinks. You just placed it, so moving the camera off
+    // what you are doing would be in the way rather than informative.
+    : focus = piece!.playerId != snapshot.playerId;
   final GameSnapshot snapshot;
   final PlacedPiece? piece;
+  final bool focus;
   bool get isRoll => piece == null;
 }
 
@@ -68,6 +72,7 @@ class _TableStageState extends State<TableStage>
   // long backlog would narrate a game nobody is still looking at.
   final _queue = <_Scene>[];
   GameSnapshot? _presented;
+  final _pulse = ValueNotifier<double>(0);
   List<ResourceFlight> _flights = [];
   Matrix4? _start, _focus;
   bool _reducedMotion = false;
@@ -141,6 +146,7 @@ class _TableStageState extends State<TableStage>
 
   void _begin(_Scene scene) {
     _showing = scene;
+    _pulse.value = 0;
     if (scene.isRoll) _presented = scene.snapshot;
     _flights = scene.isRoll
         ? resourceFlights(scene.snapshot, widget.activity)
@@ -153,6 +159,7 @@ class _TableStageState extends State<TableStage>
 
   void _finish() {
     _animation.stop();
+    _pulse.value = 0;
     setState(() {
       _showing = null;
       if (_queue.isNotEmpty) _begin(_queue.removeAt(0));
@@ -187,7 +194,7 @@ class _TableStageState extends State<TableStage>
   double get _endMs {
     final scene = _showing!;
     if (!scene.isRoll) {
-      return _reducedMotion ? _holdMs : 2 * _cameraMs + _holdMs;
+      return scene.focus && !_reducedMotion ? 2 * _cameraMs + _holdMs : _holdMs;
     }
     return _reducedMotion || scene.snapshot.producingHexes.isEmpty
         ? _diceMs
@@ -215,11 +222,21 @@ class _TableStageState extends State<TableStage>
 
   /// Zoom to the piece somebody else just placed, hold long enough to register,
   /// then hand the board back centred.
+  /// Two pulses across the hold. Reduced motion gets a steady highlight
+  /// instead: the point is to identify the piece, not to flash at anybody.
+  double _blinkAt(double into) {
+    if (_reducedMotion) return 1;
+    if (into < 0 || into > _holdMs) return 0;
+    return (math.sin(into / _holdMs * 4 * math.pi - math.pi / 2) + 1) / 2;
+  }
+
   void _tickPiece(_Scene scene) {
-    if (_reducedMotion) {
+    if (!scene.focus || _reducedMotion) {
+      _pulse.value = _blinkAt(_ms);
       if (_ms >= _endMs) _finish();
       return;
     }
+    _pulse.value = _blinkAt(_ms - _cameraMs);
     if (_focus == null) {
       final viewport = _viewerBox()?.size;
       if (viewport == null) return;
@@ -321,11 +338,13 @@ class _TableStageState extends State<TableStage>
     _animation.stop();
     // Keep the current camera position when interrupted; the user's next
     // gesture takes over without an unexpected snap back.
+    _pulse.value = 0;
     setState(() => _showing = null);
   }
 
   @override
   void dispose() {
+    _pulse.dispose();
     _animation.dispose();
     _transform.dispose();
     super.dispose();
@@ -345,6 +364,14 @@ class _TableStageState extends State<TableStage>
               // Wide enough for two badges and clear water between them; below
               // that they would sit over the coastline, so keep the row.
               final corners = constraints.maxWidth >= 340;
+              // Each extra count widens a corner badge, and two of them share
+              // the top edge with the middle port. Add them only as the board
+              // grows wide enough to keep clear water between.
+              final counts = constraints.maxWidth >= 700
+                  ? 4
+                  : constraints.maxWidth >= 520
+                  ? 3
+                  : 2;
               Widget badge(JsonMap player, {required bool compact}) =>
                   PlayerBadge(
                     key: _players.putIfAbsent(
@@ -356,10 +383,14 @@ class _TableStageState extends State<TableStage>
                     active: player['id'] == s.public['activePlayerId'],
                     onTap: () => widget.onPlayer(player),
                     compact: compact,
+                    counts: counts,
                   );
               final board = IslandBoard(
                 snapshot: s,
                 producing: _rings,
+                flashId: _showing?.piece?.locationId,
+                flash: _pulse,
+                title: _turnStatus(s),
                 corners: corners
                     ? [
                         for (final player in s.orderedPlayers)
@@ -418,7 +449,9 @@ class _TableStageState extends State<TableStage>
 
   Widget _overlay() {
     final showing = _showing;
-    if (showing != null && !showing.isRoll) return _pieceLabel(showing);
+    if (showing != null && !showing.isRoll) {
+      return showing.focus ? _pieceLabel(showing) : const SizedBox.shrink();
+    }
     final roll = _roll;
     final scene = _box(_scene), surface = _box(_surface);
     if (roll == null || scene == null || surface == null) {
@@ -534,6 +567,77 @@ class _TableStageState extends State<TableStage>
     );
   }
 
+  /// The table's status, on the board's own header line rather than in a panel
+  /// above it: whose turn it is, what the game is waiting for, and the roll.
+  Widget _turnStatus(GameSnapshot s) {
+    final active = s.public['activePlayerId'] as String;
+    final colour =
+        playerColours[(s.players[active] as JsonMap?)?['colour']] ?? hudTeal;
+    final dice = s.public['dice'] as List?;
+    return Semantics(
+      liveRegion: true,
+      label:
+          'Turn ${s.public['turnNumber']}, '
+          '${s.active ? 'your turn' : '${s.name(active)}\'s turn'}, '
+          '${words(s.phase)}',
+      child: ExcludeSemantics(
+        child: Row(
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: colour,
+                shape: BoxShape.circle,
+                border: Border.all(color: hudInk.withValues(alpha: 0.35)),
+              ),
+              child: const Icon(
+                Icons.landscape_rounded,
+                size: 15,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Turn ${s.public['turnNumber']} · '
+                    '${s.active ? 'Your turn' : '${s.name(active)}\'s turn'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: hudInk,
+                    ),
+                  ),
+                  Text(
+                    dice == null
+                        ? words(s.phase)
+                        : '${words(s.phase)} · ${dice[0]} + ${dice[1]} = '
+                              '${(dice[0] as int) + (dice[1] as int)}',
+                    key: const Key('turn-status-detail'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: hudMuted,
+                      fontSize: 11,
+                      letterSpacing: 0.3,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Names what another seat just placed. The camera shows where; this says who
   /// and what, because a road appearing at the edge of vision is easy to miss.
   Widget _pieceLabel(_Scene scene) {
@@ -633,14 +737,16 @@ class PlayerBadge extends StatelessWidget {
     required this.active,
     required this.onTap,
     this.compact = false,
+    this.counts = 2,
   });
   final JsonMap player;
   final bool own, active;
   final VoidCallback onTap;
 
-  /// Sized to sit in a corner of the map: who and how close to winning. The
-  /// other three counts stay one tap away rather than crowding the board.
+  /// Sized to sit in a corner of the map. Points always; the rest as the board
+  /// is wide enough to carry them, and whatever is left stays one tap away.
   final bool compact;
+  final int counts;
 
   @override
   Widget build(BuildContext context) {
@@ -762,7 +868,7 @@ class PlayerBadge extends StatelessWidget {
         ),
         const SizedBox(width: 5),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 64),
+          constraints: BoxConstraints(maxWidth: counts > 2 ? 48.0 : 64.0),
           child: Text(
             '${player['nickname']}',
             maxLines: 1,
@@ -771,12 +877,33 @@ class PlayerBadge extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
           ),
         ),
-        const SizedBox(width: 5),
-        Icon(Icons.star_rounded, size: 13, color: colour),
-        Text(
-          '${player['publicPoints']}',
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
-        ),
+        for (final (icon, value) in [
+          (Icons.star_rounded, player['publicPoints']),
+          (Icons.style_outlined, player['resourceCardCount']),
+          (Icons.credit_card, player['developmentCardCount']),
+          (Icons.shield_outlined, player['playedKnights']),
+        ].take(counts))
+          Padding(
+            padding: const EdgeInsets.only(left: 5),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 13,
+                  color: icon == Icons.star_rounded ? colour : hudMuted,
+                ),
+                const SizedBox(width: 1),
+                Text(
+                  '$value',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     ),
   );

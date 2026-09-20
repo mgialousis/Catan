@@ -116,7 +116,9 @@ void main() {
       );
       await pumpGame(tester, snapshot);
 
-      expect(find.text('THE ISLAND'), findsOneWidget);
+      // The board's header line carries the table's status now, not its name.
+      expect(find.textContaining('Turn '), findsWidgets);
+      expect(find.byKey(const Key('turn-status-detail')), findsOneWidget);
       expect(find.text('Your hand'), findsOneWidget);
       // Setup phase for the viewing player, so its own prompt and action are offered.
       expect(find.textContaining('starting settlement'), findsOneWidget);

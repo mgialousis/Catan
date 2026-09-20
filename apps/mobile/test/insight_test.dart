@@ -217,7 +217,19 @@ void main() {
     await t.tap(find.text('Close'));
     await t.pumpAndSettle();
     // Every other stat says what it means too.
-    await t.tap(find.byIcon(Icons.shield_outlined).first);
+    // The corner badges carry a shield as well; this is about the roster below,
+    // whose stats are the ones that explain themselves.
+    await t.tap(
+      find
+          .descendant(
+            of: find.ancestor(
+              of: find.text('PLAYERS'),
+              matching: find.byType(Column),
+            ),
+            matching: find.byIcon(Icons.shield_outlined),
+          )
+          .first,
+    );
     await t.pumpAndSettle();
     expect(find.text('Knights played'), findsOneWidget);
     expect(find.textContaining('Largest Army'), findsOneWidget);

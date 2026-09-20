@@ -217,6 +217,9 @@ class IslandBoard extends StatefulWidget {
     this.selected,
     required this.onTarget,
     this.producing,
+    this.flashId,
+    this.flash,
+    this.title,
     this.corners = const [],
     this.menu,
     this.transformationController,
@@ -233,6 +236,16 @@ class IslandBoard extends StatefulWidget {
   /// roll; an animating table overrides it with the roll it is presenting, so
   /// the rings and the dice on screen always describe the same roll.
   final Set<String>? producing;
+
+  /// A piece to call out as newly placed, pulsed by [flash] so the eye is
+  /// drawn to what changed rather than having to find it.
+  final String? flashId;
+  final ValueListenable<double>? flash;
+
+  /// Replaces the board's own name in the header row, so the table's status
+  /// can share that line with the view controls instead of taking a panel of
+  /// its own above the map.
+  final Widget? title;
 
   /// Overlaid on the four corners of the water, in order: top-left, top-right,
   /// bottom-left, bottom-right. The corners are open sea on every generated
@@ -320,15 +333,17 @@ class _IslandBoardState extends State<IslandBoard>
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, outer) {
       final header = <Widget>[
-        const Expanded(
-          child: Text(
-            'THE ISLAND',
-            style: TextStyle(
-              letterSpacing: 2,
-              fontWeight: FontWeight.w700,
-              color: Color(0xff335f5b),
-            ),
-          ),
+        Expanded(
+          child:
+              widget.title ??
+              const Text(
+                'THE ISLAND',
+                style: TextStyle(
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xff335f5b),
+                ),
+              ),
         ),
         IconButton(
           tooltip: 'Zoom in',
@@ -448,6 +463,8 @@ class _IslandBoardState extends State<IslandBoard>
                                       widget.snapshot.producingHexes,
                                   hovered: hovered,
                                   reveal: reveal,
+                                  flashId: widget.flashId,
+                                  flash: widget.flash,
                                 ),
                               ),
                             ),
@@ -1647,6 +1664,31 @@ class _IslandArtwork {
 
   // -- selection feedback ---------------------------------------------------
 
+  /// Pulses the piece that was just placed. Drawn in the feedback layer over
+  /// the finished piece, so it needs no knowledge of how one is rendered.
+  void flash(Canvas c, String id, double t) {
+    if (t <= 0.01) return;
+    final glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xffffffff).withValues(alpha: 0.85 * t);
+    final halo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xff1fd6cb).withValues(alpha: 0.55 * t);
+    if (id.startsWith('e-')) {
+      final ends = (s.edges[id]['vertexIds'] as List)
+          .map((v) => vertexPoint(s.vertices[v]))
+          .toList();
+      c.drawLine(ends[0], ends[1], halo..strokeWidth = 20);
+      c.drawLine(ends[0], ends[1], glow..strokeWidth = 9);
+      return;
+    }
+    final centre = centreOf(s, id) - const Offset(0, _IslandArtwork.depth);
+    c.drawCircle(centre, 25, halo..strokeWidth = 9);
+    c.drawCircle(centre, 25, glow..strokeWidth = 4);
+  }
+
   /// Rings the hexes the last roll paid out from. It belongs to the feedback
   /// layer because it changes on every roll, while the terrain beneath it does
   /// not and stays baked.
@@ -1822,7 +1864,9 @@ class IslandPainter extends CustomPainter {
     this.producing, {
     this.hovered,
     this.reveal,
-  }) : super(repaint: reveal);
+    this.flashId,
+    this.flash,
+  }) : super(repaint: Listenable.merge([reveal, flash]));
 
   final GameSnapshot s;
   final Set<String> targets;
@@ -1831,12 +1875,17 @@ class IslandPainter extends CustomPainter {
   final Set<String> producing;
   final String? hovered;
   final Animation<double>? reveal;
+  final String? flashId;
+  final ValueListenable<double>? flash;
 
   @override
   void paint(Canvas canvas, Size size) {
     final artwork = _IslandArtwork(s);
     artwork.producing(canvas, producing);
     artwork.hover(canvas, hovered);
+    // Read live, like targets below: the value changes every frame while the
+    // constructor argument does not.
+    if (flashId != null) artwork.flash(canvas, flashId!, flash?.value ?? 0);
     // Read the live value on each tick; capturing it in the constructor freezes
     // the effect while still scheduling all the animation's repaints.
     artwork.targets(canvas, targets, selected, reveal?.value ?? 1);
@@ -1893,6 +1942,7 @@ class IslandPainter extends CustomPainter {
       // The board itself never changes mid-game, so a new roll would otherwise
       // never reach this layer.
       !setEquals(oldDelegate.producing, producing) ||
+      oldDelegate.flashId != flashId ||
       !setEquals(oldDelegate.targets, targets) ||
       oldDelegate.selected != selected ||
       oldDelegate.hovered != hovered ||

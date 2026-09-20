@@ -722,4 +722,199 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  /// Builds a snapshot in which [owner] has just placed a road.
+  ({JsonMap json, String edge, String owner}) placedRoad(
+    GameSnapshot from, {
+    required bool mine,
+  }) {
+    final built = object(jsonDecode(jsonEncode(from.json)));
+    final players = built['publicState']['players'] as Map;
+    final me = built['privateState']['playerId'] as String;
+    final owner = mine
+        ? me
+        : players.keys.firstWhere((id) => id != me) as String;
+    built['publicState']['activePlayerId'] = owner;
+    final roads = built['publicState']['roads'] as Map;
+    final edge = (built['publicState']['board']['edges'] as Map).keys
+        .firstWhere((id) => !roads.containsKey(id));
+    roads[edge] = {'ownerPlayerId': owner};
+    built['version']++;
+    return (json: built, edge: edge as String, owner: owner);
+  }
+
+  Future<({TransformationController camera, void Function(JsonMap) show})>
+  pumpBoard(
+    WidgetTester tester,
+    GameSnapshot first, {
+    bool reduced = false,
+  }) async {
+    var snapshot = first;
+    late StateSetter update;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: reduced),
+          child: Scaffold(
+            body: SingleChildScrollView(
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  update = setState;
+                  return TableStage(
+                    snapshot: snapshot,
+                    activity: const [],
+                    onTarget: (_) {},
+                    onPlayer: (_) {},
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return (
+      camera: tester
+          .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+          .transformationController!,
+      show: (json) =>
+          update(() => snapshot = GameSnapshot.parse(json, uiProtocol)),
+    );
+  }
+
+  double flashOf(WidgetTester tester) =>
+      tester.widget<IslandBoard>(find.byType(IslandBoard)).flash?.value ?? 0;
+
+  testWidgets('a newly placed piece pulses so it can be picked out', (
+    tester,
+  ) async {
+    final f = rollFixture();
+    final board = await pumpBoard(tester, f.after);
+    final road = placedRoad(f.after, mine: false);
+    board.show(road.json);
+    await tester.pump();
+    expect(
+      tester.widget<IslandBoard>(find.byType(IslandBoard)).flashId,
+      road.edge,
+      reason: 'The board must be told which piece is the new one.',
+    );
+    // Sample across the hold: it has to go bright and dark again, more than
+    // once, rather than sitting at one value.
+    final samples = <double>[];
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      samples.add(flashOf(tester));
+    }
+    var pulses = 0;
+    for (var i = 1; i < samples.length; i++) {
+      if (samples[i - 1] <= 0.5 && samples[i] > 0.5) pulses++;
+    }
+    expect(pulses, 2, reason: 'samples: $samples');
+    expect(
+      samples.any((v) => v > 0.95),
+      isTrue,
+      reason: 'It has to reach full brightness: $samples',
+    );
+    await tester.pumpAndSettle();
+    expect(flashOf(tester), 0, reason: 'The pulse stops when the scene ends.');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('your own piece blinks where it is, without moving the camera', (
+    tester,
+  ) async {
+    final f = rollFixture();
+    final board = await pumpBoard(tester, f.after);
+    board.camera.value = Matrix4.identity()
+      ..translateByDouble(-30, -20, 0, 1)
+      ..scaleByDouble(1.2, 1.2, 1, 1);
+    final held = board.camera.value.clone();
+    final road = placedRoad(f.after, mine: true);
+    board.show(road.json);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(flashOf(tester), greaterThan(0));
+    expect(
+      board.camera.value,
+      held,
+      reason: 'You just placed it; the camera must stay where you are working.',
+    );
+    // And no banner narrating your own move back to you.
+    expect(find.byKey(const Key('build-focus-label')), findsNothing);
+    await tester.pumpAndSettle();
+    expect(board.camera.value, held);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reduced motion marks the piece steadily instead of flashing', (
+    tester,
+  ) async {
+    final f = rollFixture();
+    final board = await pumpBoard(tester, f.after, reduced: true);
+    final road = placedRoad(f.after, mine: false);
+    board.show(road.json);
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(flashOf(tester), 1, reason: 'No flashing under reduced motion.');
+    }
+    await tester.pumpAndSettle();
+    expect(flashOf(tester), 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  /// The corner badges carry what the width allows: points and cards always,
+  /// development cards and knights as the board grows.
+  for (final (width, expected) in [
+    (390.0, ['star', 'cards']),
+    (560.0, ['star', 'cards', 'development']),
+    (760.0, ['star', 'cards', 'development', 'knights']),
+  ]) {
+    testWidgets('a corner badge shows ${expected.length} counts at $width', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final f = rollFixture();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: TableStage(
+                snapshot: f.after,
+                activity: const [],
+                onTarget: (_) {},
+                onPlayer: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final corner = tester
+          .widgetList<PlayerBadge>(find.byType(PlayerBadge))
+          .where((b) => b.compact)
+          .toList();
+      expect(corner, hasLength(f.after.orderedPlayers.length));
+      expect(corner.first.counts, expected.length);
+      // The counts are really drawn, not just configured.
+      for (final (icon, present) in [
+        (Icons.style_outlined, expected.contains('cards')),
+        (Icons.credit_card, expected.contains('development')),
+        (Icons.shield_outlined, expected.contains('knights')),
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byWidget(corner.first),
+            matching: find.byIcon(icon),
+          ),
+          present ? findsOneWidget : findsNothing,
+          reason: '$icon at width $width',
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

@@ -350,7 +350,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
         // insets itself, so the board is the widest thing on the screen.
         padding: const EdgeInsets.symmetric(vertical: 20),
         children: [
-          inset(_header(snapshot)),
+          // The turn, phase and roll now share the board's own header line, so
+          // there is no panel of them above the map.
           if (view.message != null)
             inset(_banner(view.message!, Icons.info_outline)),
           if (snapshot.vacantSeats.isNotEmpty)
@@ -447,113 +448,6 @@ class _GameScreenState extends ConsumerState<GameScreen>
       ],
     ),
   );
-
-  Widget _header(GameSnapshot s) {
-    final active = s.name(s.public['activePlayerId'] as String);
-    final dice = s.public['dice'] as List?;
-    final colour =
-        playerColours[(s.players[s.public['activePlayerId']]
-            as JsonMap?)?['colour']] ??
-        hudTeal;
-    return HudPanel(
-      accent: colour,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
-        alignment: WrapAlignment.spaceBetween,
-        spacing: 12,
-        runSpacing: 8,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 180),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: colour,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: hudInk.withValues(alpha: 0.35)),
-                    boxShadow: hudShadow,
-                  ),
-                  child: const Icon(
-                    Icons.landscape_rounded,
-                    size: 19,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Turn ${s.public['turnNumber']} · ${s.active ? 'Your turn' : "$active's turn"}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                          color: hudInk,
-                        ),
-                      ),
-                      Text(
-                        words(s.phase),
-                        style: const TextStyle(
-                          color: hudMuted,
-                          fontSize: 12,
-                          letterSpacing: 0.4,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (dice != null)
-            Semantics(
-              label:
-                  'Dice ${dice[0]} and ${dice[1]}, total ${(dice[0] as int) + (dice[1] as int)}',
-              excludeSemantics: true,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: hudSurfaceSunk,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: hudBorder),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.casino_outlined, size: 17, color: hudTeal),
-                    const SizedBox(width: 6),
-                    // Flexible, because the old Chip bounded this label for us
-                    // and a bare Row does not: at a 2x text scale the readout is
-                    // wider than a 320pt phone's panel.
-                    Flexible(
-                      child: Text(
-                        '${dice[0]} + ${dice[1]} = ${(dice[0] as int) + (dice[1] as int)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          color: hudInk,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 
   /// Somebody walked out. The table cannot continue with an empty seat, so this
   /// asks the people still here to decide rather than leaving them waiting.
