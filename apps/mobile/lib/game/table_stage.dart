@@ -33,6 +33,7 @@ class TableStage extends StatefulWidget {
     this.selected,
     this.menu,
     this.connected = true,
+    this.fitHeight,
   });
   final GameSnapshot snapshot;
   final List<ActivityEntry> activity;
@@ -42,6 +43,9 @@ class TableStage extends StatefulWidget {
   final String? selected;
   final Widget? menu;
   final bool connected;
+
+  /// The most height the map may take, so the whole island stays on screen.
+  final double? fitHeight;
 
   @override
   State<TableStage> createState() => _TableStageState();
@@ -379,15 +383,23 @@ class _TableStageState extends State<TableStage>
               // that row pushes the map off the bottom -- which is the very
               // thing the scaling was for.
               final corners = constraints.maxWidth >= 200;
-              final named = constraints.maxWidth >= 380;
               // Each extra count widens a corner badge, and two of them share
               // the top edge with the middle port. Add them only as the board
               // grows wide enough to keep clear water between.
+              // The name is always there; the counts give way first, then the
+              // room the name gets, so two badges never meet in the middle.
               final counts = constraints.maxWidth >= 700
                   ? 4
                   : constraints.maxWidth >= 520
                   ? 3
-                  : 2;
+                  : constraints.maxWidth >= 330
+                  ? 2
+                  : 1;
+              final nameWidth = constraints.maxWidth >= 520
+                  ? 64.0
+                  : constraints.maxWidth >= 330
+                  ? 48.0
+                  : 40.0;
               Widget badge(JsonMap player, {required bool compact}) =>
                   PlayerBadge(
                     key: _players.putIfAbsent(
@@ -400,7 +412,7 @@ class _TableStageState extends State<TableStage>
                     onTap: () => widget.onPlayer(player),
                     compact: compact,
                     counts: counts,
-                    named: named,
+                    nameWidth: nameWidth,
                   );
               final board = IslandBoard(
                 snapshot: s,
@@ -408,6 +420,7 @@ class _TableStageState extends State<TableStage>
                 flashId: _showing?.piece?.locationId,
                 flash: _pulse,
                 title: _turnStatus(s),
+                fitHeight: widget.fitHeight,
                 corners: corners
                     ? [
                         for (final player in s.seatedFromMe)
@@ -755,7 +768,7 @@ class PlayerBadge extends StatelessWidget {
     required this.onTap,
     this.compact = false,
     this.counts = 2,
-    this.named = true,
+    this.nameWidth = 64,
   });
   final JsonMap player;
   final bool own, active;
@@ -765,7 +778,7 @@ class PlayerBadge extends StatelessWidget {
   /// is wide enough to carry them, and whatever is left stays one tap away.
   final bool compact;
   final int counts;
-  final bool named;
+  final double nameWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -885,19 +898,17 @@ class PlayerBadge extends StatelessWidget {
             size: 13,
           ),
         ),
-        if (named) ...[
-          const SizedBox(width: 5),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: counts > 2 ? 48.0 : 64.0),
-            child: Text(
-              '${player['nickname']}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              softWrap: false,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
-            ),
+        const SizedBox(width: 5),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: nameWidth),
+          child: Text(
+            '${player['nickname']}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
           ),
-        ],
+        ),
         for (final (icon, value) in [
           (Icons.star_rounded, player['publicPoints']),
           (Icons.style_outlined, player['resourceCardCount']),

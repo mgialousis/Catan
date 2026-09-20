@@ -130,7 +130,14 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
   /// Log events worth interrupting for. Both are things another player did to
   /// the table that are easy to miss in the log alone.
-  static const _announced = {'RESOURCES_DISCARDED', 'RESOURCE_STOLEN'};
+  /// Events everyone at the table should be told about as they happen, rather
+  /// than only finding in the log. A completed trade changes what two players
+  /// hold, so it belongs here with the amounts it moved.
+  static const _announced = {
+    'RESOURCES_DISCARDED',
+    'RESOURCE_STOLEN',
+    'TRADE_ACCEPTED',
+  };
   int? _announcedThrough;
 
   /// Whether the full log is open. Collapsed by default: the last few lines are
@@ -330,6 +337,11 @@ class _GameScreenState extends ConsumerState<GameScreen>
         ),
       );
       final board = TableStage(
+        // The island is bounded by the height left after its own header row,
+        // so all of it stays on screen; the sea fills any width left over.
+        fitHeight: constraints.maxHeight.isFinite
+            ? math.max(180, constraints.maxHeight - 76)
+            : null,
         activity: view.activity,
         connected: view.connected,
         onPlayer: (player) => _points(snapshot, player),
@@ -409,17 +421,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
           Center(
             key: const Key('table-stage'),
             child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: constraints.maxHeight.isFinite
-                    ? math.min(
-                        820,
-                        math.max(
-                          260,
-                          (constraints.maxHeight - 76) * boardSize.aspectRatio,
-                        ),
-                      )
-                    : 820,
-              ),
+              constraints: const BoxConstraints(maxWidth: 820),
               child: board,
             ),
           ),
@@ -659,13 +661,49 @@ class _GameScreenState extends ConsumerState<GameScreen>
         child: const Text('Offer a trade'),
       );
     }
-    void add(String label, VoidCallback? onPressed, {String? unavailable}) {
+
+    /// [cost] is shown on the action itself, so what a move takes is readable
+    /// without remembering it or being told only once it is unaffordable.
+    void add(
+      String label,
+      VoidCallback? onPressed, {
+      String? unavailable,
+      Map<String, int>? cost,
+    }) {
+      final priced = cost == null
+          ? Text(label)
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label),
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final entry in cost.entries)
+                      for (var n = 0; n < entry.value; n++)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 1),
+                          child: ResourceIcon(entry.key, size: 15),
+                        ),
+                  ],
+                ),
+              ],
+            );
       buttons.add(
         Tooltip(
-          message: unavailable ?? '',
+          message:
+              unavailable ??
+              (cost == null ? '' : 'Costs ${resourceSummary(cost)}'),
           child: OutlinedButton(
             onPressed: view.locked ? null : onPressed,
-            child: Text(label),
+            child: Semantics(
+              label: cost == null
+                  ? label
+                  : '$label, costs ${resourceSummary(cost)}',
+              excludeSemantics: true,
+              child: priced,
+            ),
           ),
         ),
       );
@@ -723,10 +761,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
           add(
             entry.value,
             targets.isEmpty ? null : () => _controller.select(entry.key),
-            unavailable: targets.isEmpty
-                ? (s.canAfford(entry.key)
-                      ? 'No legal location'
-                      : 'Costs ${resourceSummary(costs[entry.key]!)}')
+            cost: costs[entry.key],
+            unavailable: targets.isEmpty && s.canAfford(entry.key)
+                ? 'No legal location'
                 : null,
           );
         }
@@ -735,9 +772,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
           s.canAfford('BUY_DEVELOPMENT_CARD')
               ? () => _controller.command('BUY_DEVELOPMENT_CARD')
               : null,
-          unavailable: s.canAfford('BUY_DEVELOPMENT_CARD')
-              ? null
-              : 'Costs ${resourceSummary(costs['BUY_DEVELOPMENT_CARD']!)}',
+          cost: costs['BUY_DEVELOPMENT_CARD'],
         );
         if (s.cards.isNotEmpty) add('Play a card', () => _openCards(s));
         add('Trade', () => _openTrade(s));

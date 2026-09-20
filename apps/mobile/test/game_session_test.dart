@@ -6,6 +6,7 @@ import 'package:island_table/game/controller.dart';
 import 'package:island_table/game/countdown.dart';
 import 'package:island_table/game/game_screen.dart';
 import 'package:island_table/game/model.dart';
+import 'package:island_table/game/resource_icon.dart';
 import 'game_model_test.dart' show uiProtocol, uiSnapshot;
 import 'game_test.dart' show FakePort;
 import 'table_stage_test.dart' show rollFixture;
@@ -323,6 +324,53 @@ void main() {
       ),
       findsOneWidget,
     );
+    await t.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('build actions show what they cost', (t) async {
+    await show(t, uiSnapshot('action'));
+    // A road costs one brick and one lumber: two icons on the action itself.
+    final road = find.ancestor(
+      of: find.text('Build road'),
+      matching: find.byType(OutlinedButton),
+    );
+    expect(road, findsOneWidget);
+    for (final resource in ['brick', 'lumber']) {
+      expect(
+        find.descendant(
+          of: road,
+          matching: find.byWidgetPredicate(
+            (w) => w is ResourceIcon && w.resource == resource,
+          ),
+        ),
+        findsOneWidget,
+        reason: 'a road costs one $resource',
+      );
+    }
+    // A city costs two grain and three ore, shown as five icons.
+    final city = find.ancestor(
+      of: find.text('Build city'),
+      matching: find.byType(OutlinedButton),
+    );
+    expect(
+      find.descendant(
+        of: city,
+        matching: find.byWidgetPredicate(
+          (w) => w is ResourceIcon && w.resource == 'ore',
+        ),
+      ),
+      findsNWidgets(3),
+    );
+    expect(
+      find.descendant(
+        of: city,
+        matching: find.byWidgetPredicate(
+          (w) => w is ResourceIcon && w.resource == 'grain',
+        ),
+      ),
+      findsNWidgets(2),
+    );
+    expect(t.takeException(), isNull);
     await t.pumpWidget(const SizedBox());
   });
 }

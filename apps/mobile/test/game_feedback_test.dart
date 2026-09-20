@@ -300,4 +300,40 @@ void main() {
       },
     );
   }
+
+  testWidgets('a completed trade is announced to everyone, with amounts', (
+    t,
+  ) async {
+    final port = await showGame(t, 'action');
+    final s = GameSnapshot.parse(uiSnapshot('action'), uiProtocol);
+    final others = s.orderedPlayers
+        .map((p) => p['id'] as String)
+        .where((id) => id != s.playerId)
+        .toList();
+    final a = others[0], b = others[1];
+    final opening = ActivityEntry(
+      sequence: 1,
+      type: 'ROAD_BUILT',
+      message: 'Built a road.',
+      actorPlayerId: a,
+    );
+    // A trade between two other seats still concerns everybody: it changes
+    // what they hold, and the amounts are the point of the notice.
+    final trade = ActivityEntry(
+      sequence: 2,
+      type: 'TRADE_ACCEPTED',
+      message: 'Completed a player trade.',
+      actorPlayerId: b,
+      subjectPlayerId: a,
+      give: {'brick': 2, 'lumber': 0, 'wool': 0, 'grain': 0, 'ore': 0},
+      receive: {'brick': 0, 'lumber': 0, 'wool': 0, 'grain': 0, 'ore': 1},
+    );
+    port.emit('history', [opening]);
+    await t.pumpAndSettle();
+    port.emit('history', [opening, trade]);
+    await t.pumpAndSettle();
+    final line = '${s.name(b)} traded 2 brick to ${s.name(a)} for 1 ore.';
+    expect(find.text(line), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
 }

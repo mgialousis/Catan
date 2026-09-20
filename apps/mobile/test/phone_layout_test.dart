@@ -43,6 +43,19 @@ void main() {
       port.emit('snapshot', uiSnapshot('action'));
       await t.pumpAndSettle();
       final map = t.getRect(find.byType(InteractiveViewer));
+      final sea = t.getRect(find.byKey(const Key('island-sea')));
+      // The island holds its proportions; the sea takes whatever width is
+      // left, so a landscape screen is not mostly empty margin.
+      expect(
+        sea.width,
+        closeTo(size.width > 820 ? 820 : size.width, 1),
+        reason: '$name: the sea must fill the width (sea $sea, screen $size)',
+      );
+      expect(
+        sea.bottom,
+        lessThanOrEqualTo(size.height),
+        reason: '$name: the board card runs off the bottom',
+      );
       // The whole island is visible without scrolling.
       expect(
         map.bottom,
@@ -60,10 +73,17 @@ void main() {
           reason: '$name: portrait must give the map the whole width',
         );
       } else {
+        // Landscape: the island is as tall as the space allows, and the sea
+        // around it is wider than the island itself.
+        expect(
+          sea.width,
+          greaterThan(map.width),
+          reason: '$name: the sea should extend past the island',
+        );
         expect(
           map.height,
-          greaterThan(size.height * 0.55),
-          reason: '$name: scaled down further than fitting requires',
+          greaterThan(sea.height * 0.95),
+          reason: '$name: the island should use the card height',
         );
       }
       // Every seat is on the map, not in a row above it.

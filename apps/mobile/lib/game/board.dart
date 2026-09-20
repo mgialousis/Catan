@@ -220,6 +220,7 @@ class IslandBoard extends StatefulWidget {
     this.flashId,
     this.flash,
     this.title,
+    this.fitHeight,
     this.corners = const [],
     this.menu,
     this.transformationController,
@@ -241,6 +242,11 @@ class IslandBoard extends StatefulWidget {
   /// drawn to what changed rather than having to find it.
   final String? flashId;
   final ValueListenable<double>? flash;
+
+  /// The most height the map may take. The island keeps its own proportions,
+  /// so on a screen wider than it is tall the sea around it fills the rest of
+  /// the width rather than the whole card shrinking into the middle.
+  final double? fitHeight;
 
   /// Replaces the board's own name in the header row, so the table's status
   /// can share that line with the view controls instead of taking a panel of
@@ -369,8 +375,7 @@ class _IslandBoardState extends State<IslandBoard>
       final island = ClipRRect(
         key: widget.viewportKey,
         borderRadius: BorderRadius.circular(24),
-        child: AspectRatio(
-          aspectRatio: boardSize.aspectRatio,
+        child: SizedBox.expand(
           child: LayoutBuilder(
             builder: (context, constraints) => InteractiveViewer(
               onInteractionStart: (_) => widget.onInteraction?.call(),
@@ -479,13 +484,46 @@ class _IslandBoardState extends State<IslandBoard>
           ),
         ),
       );
-      // The badges sit above the map in the stack but outside the viewer, so
-      // they neither pan nor zoom with the island.
-      final water = widget.corners.isEmpty
-          ? island
-          : Stack(
+      // The island holds its own proportions; the sea fills whatever width is
+      // left, painted with the same vertical gradient the scene uses, so the
+      // two meet at the same colour at every height and there is no seam. The
+      // badges sit above the map but outside the viewer, so they neither pan
+      // nor zoom with the island.
+      final water = LayoutBuilder(
+        builder: (context, box) {
+          // Three bounds: the island's own proportions, what the caller says
+          // must stay on screen, and whatever a height-constrained parent has
+          // left for us.
+          final height = math.min(
+            math.min(box.maxWidth / boardSize.aspectRatio, box.maxHeight),
+            widget.fitHeight ?? double.infinity,
+          );
+          return SizedBox(
+            width: box.maxWidth,
+            height: height,
+            child: Stack(
               children: [
-                island,
+                Positioned.fill(
+                  child: DecoratedBox(
+                    key: const Key('island-sea'),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [_oceanDeep, _oceanMid, Color(0xff1f6d95)],
+                        stops: [0, 0.55, 1],
+                      ),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: SizedBox(
+                    width: height * boardSize.aspectRatio,
+                    height: height,
+                    child: island,
+                  ),
+                ),
                 // Clockwise: top-left, top-right, bottom-right, bottom-left.
                 for (final (index, corner) in widget.corners.indexed)
                   Positioned(
@@ -496,11 +534,16 @@ class _IslandBoardState extends State<IslandBoard>
                     child: corner,
                   ),
               ],
-            );
+            ),
+          );
+        },
+      );
       return Column(
         children: [
           Row(children: header),
           // Flexible only when the parent bounds our height; a scroll view leaves it unbounded.
+          // Flexible only when the parent bounds our height; a scroll view
+          // leaves it unbounded and the island sizes itself.
           if (outer.maxHeight.isFinite) Flexible(child: water) else water,
           // On a short screen the island needs that height more than the hint
           // does; the gestures are discoverable by trying them.
