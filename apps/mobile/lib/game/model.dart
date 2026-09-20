@@ -178,6 +178,17 @@ class GameSnapshot {
   List<JsonMap> get cards => (hand['developmentCards'] as List).cast<JsonMap>();
   List<JsonMap> get orderedPlayers => players.values.cast<JsonMap>().toList()
     ..sort((a, b) => (a['seatIndex'] as int).compareTo(b['seatIndex'] as int));
+
+  /// Seat order rotated so you come first. Around a real table you sit
+  /// somewhere fixed and the turn passes round you; the corners of the map are
+  /// read the same way.
+  List<JsonMap> get seatedFromMe {
+    final seats = orderedPlayers;
+    final me = seats.indexWhere((player) => player['id'] == playerId);
+    if (me <= 0) return seats;
+    return [...seats.sublist(me), ...seats.sublist(0, me)];
+  }
+
   String name(String id) => players[id]?['nickname'] as String? ?? 'Player';
 
   /// Automated seats are labelled everywhere a name is shown, so a practice

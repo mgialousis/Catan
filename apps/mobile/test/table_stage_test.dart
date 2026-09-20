@@ -917,4 +917,105 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('you sit top-left and the turn order runs clockwise', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(760, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final f = rollFixture();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: TableStage(
+              snapshot: f.after,
+              activity: const [],
+              onTarget: (_) {},
+              onPlayer: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final seats = f.after.seatedFromMe;
+    expect(
+      seats.first['id'],
+      f.after.playerId,
+      reason: 'You come first however the seats are numbered.',
+    );
+    // Seat order is preserved after you, wrapping around.
+    final byIndex = f.after.orderedPlayers.map((p) => p['id']).toList();
+    final mine = byIndex.indexOf(f.after.playerId);
+    expect(seats.map((p) => p['id']), [
+      ...byIndex.sublist(mine),
+      ...byIndex.sublist(0, mine),
+    ]);
+    // Corners read clockwise: you top-left, then the next seats right and down.
+    final centres = [
+      for (final player in seats)
+        tester.getCenter(
+          find.byWidgetPredicate(
+            (w) =>
+                w is PlayerBadge && w.compact && w.player['id'] == player['id'],
+          ),
+        ),
+    ];
+    final board = tester.getRect(find.byType(InteractiveViewer));
+    expect(centres[0].dx, lessThan(board.center.dx), reason: 'you: left');
+    expect(centres[0].dy, lessThan(board.center.dy), reason: 'you: top');
+    expect(centres[1].dx, greaterThan(board.center.dx), reason: 'next: right');
+    expect(centres[1].dy, lessThan(board.center.dy), reason: 'next: top');
+    if (centres.length > 2) {
+      expect(
+        centres[2].dx,
+        greaterThan(board.center.dx),
+        reason: 'third: right',
+      );
+      expect(
+        centres[2].dy,
+        greaterThan(board.center.dy),
+        reason: 'third: bottom',
+      );
+    }
+    if (centres.length > 3) {
+      expect(centres[3].dx, lessThan(board.center.dx), reason: 'fourth: left');
+      expect(
+        centres[3].dy,
+        greaterThan(board.center.dy),
+        reason: 'fourth: bottom',
+      );
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the blink repaints the piece itself, not a marker near it', (
+    tester,
+  ) async {
+    final f = rollFixture();
+    final board = await pumpBoard(tester, f.after);
+    final road = placedRoad(f.after, mine: false);
+    board.show(road.json);
+    await tester.pump();
+    // Drive to a bright moment and record what the feedback layer draws, then
+    // to a dark one. Only the pulse differs, so any change is the piece.
+    // The hold starts after the camera ease, and the first crest is a quarter
+    // of the way through it.
+    await tester.pump(const Duration(milliseconds: 925));
+    final bright = boardPictures(tester).last;
+    final lit = flashOf(tester);
+    await tester.pump(const Duration(milliseconds: 325));
+    final dark = boardPictures(tester).last;
+    expect(lit, greaterThan(0.8), reason: 'sampled the bright half');
+    expect(flashOf(tester), lessThan(0.3), reason: 'sampled the dark half');
+    expect(
+      bright,
+      isNot(equals(dark)),
+      reason: 'The feedback layer must actually redraw between pulses.',
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }

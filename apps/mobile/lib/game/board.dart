@@ -247,9 +247,9 @@ class IslandBoard extends StatefulWidget {
   /// its own above the map.
   final Widget? title;
 
-  /// Overlaid on the four corners of the water, in order: top-left, top-right,
-  /// bottom-left, bottom-right. The corners are open sea on every generated
-  /// board, so seats can sit there instead of taking a row above the map.
+  /// Overlaid on the four corners of the water, clockwise from the top left.
+  /// The corners are open sea on every generated board, so seats can sit there
+  /// instead of taking a row above the map.
   final List<Widget> corners;
 
   /// Optional control placed beside the title, so the table's own actions sit
@@ -486,10 +486,11 @@ class _IslandBoardState extends State<IslandBoard>
           : Stack(
               children: [
                 island,
+                // Clockwise: top-left, top-right, bottom-right, bottom-left.
                 for (final (index, corner) in widget.corners.indexed)
                   Positioned(
-                    left: index.isEven ? 8 : null,
-                    right: index.isEven ? null : 8,
+                    left: index == 0 || index == 3 ? 8 : null,
+                    right: index == 1 || index == 2 ? 8 : null,
                     top: index < 2 ? 8 : null,
                     bottom: index < 2 ? null : 8,
                     child: corner,
@@ -1401,8 +1402,14 @@ class _IslandArtwork {
 
   void _roads(Canvas c) {
     for (final road in s.roads.entries) {
-      final vertices = s.edges[road.key]['vertexIds'] as List,
-          owner = s.players[road.value['ownerPlayerId']] as Map;
+      _road(c, road.key, road.value as Map);
+    }
+  }
+
+  void _road(Canvas c, String id, Map road) {
+    {
+      final vertices = s.edges[id]['vertexIds'] as List,
+          owner = s.players[road['ownerPlayerId']] as Map;
       final colour = playerColours[owner['colour']]!;
       final a = vertexPoint(s.vertices[vertices[0]]),
           b = vertexPoint(s.vertices[vertices[1]]);
@@ -1447,7 +1454,12 @@ class _IslandArtwork {
     final ids = s.buildings.keys.toList()
       ..sort((a, b) => centreOf(s, a).dy.compareTo(centreOf(s, b).dy));
     for (final id in ids) {
-      final building = s.buildings[id] as Map;
+      _building(c, id, s.buildings[id] as Map);
+    }
+  }
+
+  void _building(Canvas c, String id, Map building) {
+    {
       final at = vertexPoint(s.vertices[id]);
       final owner = s.players[building['ownerPlayerId']] as Map;
       final colour = playerColours[owner['colour']]!;
@@ -1664,29 +1676,42 @@ class _IslandArtwork {
 
   // -- selection feedback ---------------------------------------------------
 
-  /// Pulses the piece that was just placed. Drawn in the feedback layer over
-  /// the finished piece, so it needs no knowledge of how one is rendered.
+  /// Pulses the piece that was just placed by redrawing that very piece on top
+  /// of itself, brightened. What blinks is the road or the building, not a
+  /// marker beside it, and it needs no separate idea of how a piece looks.
   void flash(Canvas c, String id, double t) {
     if (t <= 0.01) return;
-    final glow = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..color = const Color(0xffffffff).withValues(alpha: 0.85 * t);
-    final halo = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..color = const Color(0xff1fd6cb).withValues(alpha: 0.55 * t);
+    final Rect bounds;
+    final void Function(Canvas) piece;
     if (id.startsWith('e-')) {
+      final road = s.roads[id] as Map?;
+      if (road == null) return;
       final ends = (s.edges[id]['vertexIds'] as List)
           .map((v) => vertexPoint(s.vertices[v]))
           .toList();
-      c.drawLine(ends[0], ends[1], halo..strokeWidth = 20);
-      c.drawLine(ends[0], ends[1], glow..strokeWidth = 9);
-      return;
+      bounds = Rect.fromPoints(ends[0], ends[1]).inflate(24);
+      piece = (canvas) => _road(canvas, id, road);
+    } else {
+      final building = s.buildings[id] as Map?;
+      if (building == null) return;
+      bounds = Rect.fromCenter(
+        center: vertexPoint(s.vertices[id]),
+        width: 96,
+        height: 108,
+      );
+      piece = (canvas) => _building(canvas, id, building);
     }
-    final centre = centreOf(s, id) - const Offset(0, _IslandArtwork.depth);
-    c.drawCircle(centre, 25, halo..strokeWidth = 9);
-    c.drawCircle(centre, 25, glow..strokeWidth = 4);
+    c.saveLayer(bounds, Paint());
+    piece(c);
+    // srcATop tints only what the piece actually covers, so its silhouette
+    // stays exact instead of becoming a glowing rectangle.
+    c.drawRect(
+      bounds,
+      Paint()
+        ..color = const Color(0xffffffff).withValues(alpha: 0.9 * t)
+        ..blendMode = BlendMode.srcATop,
+    );
+    c.restore();
   }
 
   /// Rings the hexes the last roll paid out from. It belongs to the feedback

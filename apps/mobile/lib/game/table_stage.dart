@@ -393,7 +393,7 @@ class _TableStageState extends State<TableStage>
                 title: _turnStatus(s),
                 corners: corners
                     ? [
-                        for (final player in s.orderedPlayers)
+                        for (final player in s.seatedFromMe)
                           badge(player, compact: true),
                       ]
                     : const [],

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { botPace, BOT_BASE_PACE_MS } from '../dist/bot-runner.js';
+import { botPace, botReadyAt, BOT_BASE_PACE_MS } from '../dist/bot-runner.js';
 import { projectEffects } from '../../../packages/game-engine/dist/index.js';
 
 // Built through the same projection the server persists with, so this cannot
@@ -49,4 +49,36 @@ test('anything without a presentation keeps the ordinary pace', () => {
   for (const type of [null, 'END_TURN', 'BUY_DEVELOPMENT_CARD', 'BANK_TRADE']) {
     assert.equal(botPace(type), BOT_BASE_PACE_MS);
   }
+});
+
+test('a quick human turn does not let the next seat roll over the payout', () => {
+  // A roll that pays five cards, then the person ends their own turn a second
+  // later. The bot must still wait out the payout the table is showing.
+  const rolledAt = 10_000;
+  const endedAt = 11_000;
+  const recent = [
+    { commandType: 'END_TURN', activity: [], atMs: endedAt },
+    { commandType: 'ROLL_DICE', activity: payout(5), atMs: rolledAt },
+  ];
+  const ready = botReadyAt(recent, endedAt);
+  assert.equal(ready, rolledAt + botPace('ROLL_DICE', payout(5)));
+  assert.ok(
+    ready > endedAt + BOT_BASE_PACE_MS,
+    'ending a turn early must not shorten the payout already in flight',
+  );
+});
+
+test('a close-up of a piece is waited out the same way', () => {
+  const builtAt = 50_000;
+  const recent = [
+    { commandType: 'END_TURN', activity: [], atMs: builtAt + 300 },
+    { commandType: 'BUILD_CITY', activity: [], atMs: builtAt },
+  ];
+  assert.equal(botReadyAt(recent, builtAt + 300), builtAt + botPace('BUILD_CITY'));
+});
+
+test('an old move no longer holds the table', () => {
+  const recent = [{ commandType: 'END_TURN', activity: [], atMs: 90_000 }];
+  assert.equal(botReadyAt(recent, 90_000), 90_000 + BOT_BASE_PACE_MS);
+  assert.equal(botReadyAt([], 90_000), 90_000 + BOT_BASE_PACE_MS);
 });

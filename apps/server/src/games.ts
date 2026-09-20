@@ -6,7 +6,7 @@ import { applyCommand, createGame, assertInvariants, projectGame, projectEffects
 import { Database } from './database.js';
 import type { Rooms } from './rooms.js';
 import { canonical, hash, LobbyError } from './lobby-policy.js';
-import { botJobs, botMove, botDifficulty, botPace, matchesBotJob, BOT_BASE_PACE_MS, type BotJob } from './bot-runner.js';
+import { botJobs, botMove, botDifficulty, botPace, botReadyAt, matchesBotJob, BOT_BASE_PACE_MS, type BotJob } from './bot-runner.js';
 
 /**
  * How long an automated seat waits before moving. Long enough that a practice
@@ -375,9 +375,9 @@ export class Games {
       // than the board resolving itself the instant a turn passes, and so the
       // client has finished presenting the previous move: a roll's payout is
       // never cut short by the next roll.
-      const previous = (await db.query('SELECT command_type,public_activity FROM app.move_logs WHERE room_id=$1 ORDER BY sequence DESC LIMIT 1', [job.roomId])).rows[0];
-      const pace = botPace(previous?.command_type ?? null, previous?.public_activity ?? []);
-      if (Date.parse(now) - row.updated_at.getTime() < pace) return 'EARLY' as const;
+      const recent = (await db.query('SELECT command_type,public_activity,created_at FROM app.move_logs WHERE room_id=$1 ORDER BY sequence DESC LIMIT 6', [job.roomId])).rows;
+      const readyAt = botReadyAt(recent.map(move => ({ commandType: move.command_type, activity: move.public_activity, atMs: move.created_at.getTime() })), row.updated_at.getTime());
+      if (Date.parse(now) < readyAt) return 'EARLY' as const;
       const move = botMove(state, job, botDifficulty(room.settings), now, engineContext().random);
       if (!move) return 'STALE' as const;
       await this.persist(db, room, state, move.result, move.actor, move.command, undefined, { botDifficulty: botDifficulty(room.settings) });

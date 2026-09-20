@@ -104,6 +104,24 @@ const DICE_MS = 2800, CAMERA_MS = 600, FLIGHT_MS = 1000, GAP_MS = 160, PAD_MS = 
 export const BOT_BASE_PACE_MS = 900;
 const BUILDS = ['BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY'];
 
+export interface PacedMove { commandType: string; activity: readonly unknown[]; atMs: number }
+
+/**
+ * When the table is free for the next automated move.
+ *
+ * Pacing the move just made is not enough on its own: a person can click
+ * through their own turn in a second, and the next seat would then roll on top
+ * of the payout the table is still showing. So every recent move keeps the
+ * table busy for as long as its own presentation lasts, whoever made it, and
+ * the bot waits for the last of them.
+ */
+export function botReadyAt(recent: readonly PacedMove[], updatedAtMs: number): number {
+  if (!recent.length) return updatedAtMs + BOT_BASE_PACE_MS;
+  let ready = updatedAtMs;
+  for (const move of recent) ready = Math.max(ready, move.atMs + botPace(move.commandType, move.activity));
+  return ready;
+}
+
 export function botPace(commandType: string | null, activity: readonly unknown[] = []): number {
   if (commandType === null) return BOT_BASE_PACE_MS;
   if (BUILDS.includes(commandType)) return 2 * CAMERA_MS + HOLD_MS;
