@@ -29,15 +29,20 @@ signed Android **build 18** on `2326130`, API on `812d023`. Verify with
 before assuming the API needs a deploy; here it did not, and a practice game
 was played straight through the web deployment without interruption.
 
-Two defects the user hit while playing build 18 are now fixed, client-only and
-**not yet deployed**. Your own roll never animated: the board was an unkeyed
+Two defects the user hit while playing build 18 are fixed in `31b85ac`, live on
+web and signed Android **build 19**; the API was not redeployed and still runs
+`812d023`. Your own roll never animated: the board was an unkeyed
 child of the panel list, so the "sending" notice every command inserts shifted
 its index and rebuilt its element, discarding the presentation and the camera
 with it. A bot's roll sets no pending notice, which is why only your own was
 affected. The cyan production rings were read from the live snapshot while the
 overlay presented an older queued roll, and ending a turn emptied them from
 under a presentation still running; they now follow the roll being presented,
-and rolls are no longer queued — a newer one takes over.
+and rolls are no longer queued — a newer one takes over. The deployed
+`main.dart.js` and the packaged `libapp.so` were both searched for the keyed
+board, so the fix shipped rather than a cached build; hosted preflight passed at
+64 ms median / 142 ms p95, and all three saved games were unchanged either side
+of the static deployment. Neither fix has yet been watched by a person.
 
 Validation: 254 Node tests and 345 Flutter tests pass; Flutter analysis and
 `git diff --check` pass. Rendered portrait frames were inspected. Regression tests
@@ -52,7 +57,7 @@ smoothness remains to be checked. See [release verification](release-2026-09-20.
   History was audited for credentials first; only `.env.example` placeholders and
   deliberately fake test fixtures matched. Phases 1–6 are implemented and a solo
   practice mode against bots ships on top of them; Phase 7 acceptance remains partial.
-- Web: `812d023`,
+- Web: `31b85ac`,
   [live](https://dashboard.render.com/static/srv-dajgfdnqj5pc73dhl33g).
 - API: `812d023`,
   [live](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330).
@@ -60,8 +65,9 @@ smoothness remains to be checked. See [release verification](release-2026-09-20.
   GitHub account**, unlike a build artifact, which requires one whatever the
   repository's visibility:
   https://github.com/mgialousis/Catan/releases/download/android-latest/island-table.apk
-  Build 17 (`812d023`, version code `1017`) verified anonymously at 55,226,920 bytes
-  against the adjacent `SHA256SUMS`, with the existing release signing certificate. Each build of
+  Build 19 (`31b85ac`, version code `1019` read out of the package) verified
+  anonymously at 55,226,920 bytes against the adjacent `SHA256SUMS`, with the
+  existing release signing certificate, so an update install retains app data. Each build of
   `main` replaces both files; the URL does not change.
 - Both Render services are Frankfurt, Free plan, one instance, automatic deploys
   disabled. No paid resource is enabled.
