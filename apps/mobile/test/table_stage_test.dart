@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:island_table/game/model.dart';
+import 'package:island_table/game/board.dart';
 import 'package:island_table/game/roll_presentation.dart';
 import 'package:island_table/game/table_stage.dart';
 import 'game_model_test.dart' show uiProtocol, uiSnapshot;
@@ -55,6 +56,72 @@ rollFixture() {
 }
 
 void main() {
+  for (final textScale in [1.0, 1.6]) {
+    testWidgets(
+      'dice stay centered on the map viewport after zoom and pan at $textScale text',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final f = rollFixture();
+        var snapshot = f.before;
+        late StateSetter update;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+              child: Scaffold(
+                body: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 70, 12, 0),
+                    child: StatefulBuilder(
+                      builder: (context, setState) {
+                        update = setState;
+                        return TableStage(
+                          snapshot: snapshot,
+                          activity: f.activity,
+                          onTarget: (_) {},
+                          onPlayer: (_) {},
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final controller = tester
+            .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+            .transformationController!;
+        controller.value = Matrix4.identity()
+          ..translateByDouble(-80, -35, 0, 1)
+          ..scaleByDouble(1.7, 1.7, 1, 1);
+        await tester.pumpAndSettle();
+        update(() => snapshot = f.after);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+        final viewport = find
+            .descendant(
+              of: find.byType(IslandBoard),
+              matching: find.byType(ClipRRect),
+            )
+            .first;
+        final delta =
+            tester.getCenter(find.byKey(const Key('roll-dice-overlay'))) -
+            tester.getCenter(viewport);
+        expect(
+          delta.distance,
+          lessThan(1),
+          reason:
+              'Use the actual panel size and the untransformed map viewport.',
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   test(
     'flights use actual payouts, city counts, and the correct recipients',
     () {
@@ -141,8 +208,14 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 600));
         expect(find.byKey(const Key('roll-dice-overlay')), findsOneWidget);
-        expect(find.text('2 + 3 · 5'), findsOneWidget);
+        expect(find.text('2 + 3 = 5'), findsOneWidget);
         await tester.pump(const Duration(milliseconds: 1900));
+        expect(
+          find.byKey(const Key('roll-dice-overlay')),
+          findsOneWidget,
+          reason: 'The result stays visible one second longer than build 17.',
+        );
+        await tester.pump(const Duration(milliseconds: 1000));
         expect(find.byKey(const Key('roll-dice-overlay')), findsNothing);
         expect(
           boardPictures(tester).take(2),
@@ -211,19 +284,95 @@ void main() {
     next['publicState']['turnNumber']++;
     update(() => snapshot = GameSnapshot.parse(next, uiProtocol));
     await tester.pump();
-    expect(find.text('2 + 3 · 5'), findsOneWidget);
+    expect(find.text('2 + 3 = 5'), findsOneWidget);
     next['version']++;
     next['publicState']['hasRolled'] = true;
     next['publicState']['dice'] = [3, 3];
     next['publicState']['phase'] = 'ACTION';
     update(() => snapshot = GameSnapshot.parse(next, uiProtocol));
     await tester.pump();
-    expect(find.text('2 + 3 · 5'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 4700));
+    expect(find.text('2 + 3 = 5'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 7000));
     await tester.pump(const Duration(milliseconds: 600));
-    expect(find.text('3 + 3 · 6'), findsOneWidget);
+    expect(find.text('3 + 3 = 6'), findsOneWidget);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('roll-dice-overlay')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('late payouts fly for one second each, strictly one at a time', (
+    tester,
+  ) async {
+    final f = rollFixture();
+    var snapshot = f.before;
+    var activity = <ActivityEntry>[];
+    late StateSetter update;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                update = setState;
+                return TableStage(
+                  snapshot: snapshot,
+                  activity: activity,
+                  onTarget: (_) {},
+                  onPlayer: (_) {},
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    update(() => snapshot = f.after);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1000));
+    update(() => activity = f.activity);
+    await tester.pump();
+    expect(
+      find.text('2 + 3 = 5'),
+      findsOneWidget,
+      reason: 'Receiving payout data must not restart the dice animation.',
+    );
+    final icons = find.byWidgetPredicate(
+      (w) =>
+          w.key is ValueKey<String> &&
+          (w.key! as ValueKey<String>).value.startsWith('resource-flight-'),
+    );
+    await tester.pump(const Duration(milliseconds: 2400));
+    final transform = tester
+        .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+        .transformationController!;
+    final focus = transform.value.clone();
+    for (var index = 0; index < 3; index++) {
+      expect(icons, findsOneWidget);
+      expect(find.byKey(ValueKey('resource-flight-$index')), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 900));
+      expect(
+        icons,
+        findsOneWidget,
+        reason: 'The current icon is still flying after 900 ms.',
+      );
+      expect(find.byKey(ValueKey('resource-flight-$index')), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        icons,
+        findsNothing,
+        reason: 'There is a short pause after each delivery.',
+      );
+      expect(
+        transform.value,
+        focus,
+        reason: 'Keep focus until every resource arrives.',
+      );
+      if (index < 2) await tester.pump(const Duration(milliseconds: 160));
+    }
+    await tester.pumpAndSettle();
+    expect(transform.value.getMaxScaleOnAxis(), 1);
+    expect(icons, findsNothing);
     expect(tester.takeException(), isNull);
   });
 

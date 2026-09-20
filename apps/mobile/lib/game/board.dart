@@ -219,6 +219,7 @@ class IslandBoard extends StatefulWidget {
     this.menu,
     this.transformationController,
     this.sceneKey,
+    this.viewportKey,
     this.onInteraction,
   });
   final GameSnapshot snapshot;
@@ -231,6 +232,7 @@ class IslandBoard extends StatefulWidget {
   final Widget? menu;
   final TransformationController? transformationController;
   final GlobalKey? sceneKey;
+  final GlobalKey? viewportKey;
   final VoidCallback? onInteraction;
   @override
   State<IslandBoard> createState() => _IslandBoardState();
@@ -338,6 +340,7 @@ class _IslandBoardState extends State<IslandBoard>
         ?widget.menu,
       ];
       final island = ClipRRect(
+        key: widget.viewportKey,
         borderRadius: BorderRadius.circular(24),
         child: AspectRatio(
           aspectRatio: boardSize.aspectRatio,

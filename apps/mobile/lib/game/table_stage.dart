@@ -36,11 +36,16 @@ class _TableStageState extends State<TableStage>
     with SingleTickerProviderStateMixin {
   final _surface = GlobalKey();
   final _scene = GlobalKey();
+  final _viewport = GlobalKey();
+  static const _diceMs = 2800.0;
+  static const _cameraMs = 600.0;
+  static const _flightMs = 1000.0;
+  static const _gapMs = 160.0;
+  static const _flightStart = _diceMs + _cameraMs;
   final _players = <String, GlobalKey>{};
   final _transform = TransformationController();
-  late final _animation = AnimationController(
+  late final _animation = AnimationController.unbounded(
     vsync: this,
-    duration: const Duration(milliseconds: 5200),
     animationBehavior: AnimationBehavior.preserve,
   )..addListener(_tick);
   GameSnapshot? _roll;
@@ -80,7 +85,13 @@ class _TableStageState extends State<TableStage>
         _queuedRolls.add(next);
       }
     }
-    if (_roll != null) _flights = resourceFlights(_roll!, widget.activity);
+    // Activity can follow the snapshot in the next update. Accept it during
+    // the dice/camera lead-in, then freeze the order once deliveries start.
+    if (_roll != null && _ms < _flightStart) {
+      final previousEnd = _endMs;
+      _flights = resourceFlights(_roll!, widget.activity);
+      if (_endMs != previousEnd) _animateToEnd();
+    }
   }
 
   void _begin(GameSnapshot roll) {
@@ -88,7 +99,8 @@ class _TableStageState extends State<TableStage>
     _flights = resourceFlights(roll, widget.activity);
     _start = _transform.value.clone();
     _focus = null;
-    _animation.forward(from: 0);
+    _animation.value = 0;
+    _animateToEnd();
   }
 
   void _finish() {
@@ -102,15 +114,32 @@ class _TableStageState extends State<TableStage>
   RenderBox? _box(GlobalKey key) =>
       key.currentContext?.findRenderObject() as RenderBox?;
 
-  double get _ms => _animation.value * 5200;
+  // Controller values are elapsed milliseconds, so a late payout can extend
+  // the sequence without jumping forward or changing a flight's speed.
+  double get _ms => _animation.value;
+  double get _returnAt =>
+      _flightStart +
+      _flights.length * (_flightMs + _gapMs) -
+      (_flights.isEmpty ? 0 : _gapMs) +
+      200;
+  double get _endMs => _reducedMotion || _roll!.producingHexes.isEmpty
+      ? _diceMs
+      : _returnAt + _cameraMs;
+
+  void _animateToEnd() {
+    _animation.animateTo(
+      _endMs,
+      duration: Duration(milliseconds: (_endMs - _ms).ceil()),
+    );
+  }
 
   void _tick() {
     if (_roll == null) return;
     if (_reducedMotion || _roll!.producingHexes.isEmpty) {
-      if (_ms >= 1800) _finish();
+      if (_ms >= _diceMs) _finish();
       return;
     }
-    if (_ms < 1700) return;
+    if (_ms < _diceMs) return;
     final scene = _box(_scene);
     if (scene == null || !scene.attached) return;
     if (_focus == null) {
@@ -151,31 +180,25 @@ class _TableStageState extends State<TableStage>
         ..translateByDouble(dx, dy, 0, 1)
         ..scaleByDouble(zoom, zoom, 1, 1);
     }
-    if (_ms <= 2300) {
+    if (_ms <= _flightStart) {
       _transform.value = Matrix4Tween(begin: _start, end: _focus).transform(
-        Curves.easeInOutCubic.transform(((_ms - 1700) / 600).clamp(0, 1)),
+        Curves.easeInOutCubic.transform(
+          ((_ms - _diceMs) / _cameraMs).clamp(0, 1),
+        ),
       );
-    } else if (_ms < 4500) {
+    } else if (_ms < _returnAt) {
       _transform.value = _focus!.clone();
     } else {
       _transform.value = Matrix4Tween(begin: _focus, end: _start).transform(
-        Curves.easeInOutCubic.transform(((_ms - 4500) / 600).clamp(0, 1)),
+        Curves.easeInOutCubic.transform(
+          ((_ms - _returnAt) / _cameraMs).clamp(0, 1),
+        ),
       );
     }
-    if (_animation.isCompleted) _finish();
+    if (_ms >= _endMs) _finish();
   }
 
-  RenderBox? _viewerBox() {
-    RenderBox? result;
-    _scene.currentContext?.visitAncestorElements((element) {
-      if (element.widget is InteractiveViewer) {
-        result = element.findRenderObject() as RenderBox?;
-        return false;
-      }
-      return true;
-    });
-    return result;
-  }
+  RenderBox? _viewerBox() => _box(_viewport);
 
   void _cancel() {
     _queuedRolls.clear();
@@ -246,6 +269,7 @@ class _TableStageState extends State<TableStage>
                 menu: widget.menu,
                 transformationController: _transform,
                 sceneKey: _scene,
+                viewportKey: _viewport,
                 onInteraction: _cancel,
               ),
             ],
@@ -271,7 +295,7 @@ class _TableStageState extends State<TableStage>
     }
     Offset local(Offset point) =>
         surface.globalToLocal(scene.localToGlobal(point));
-    if (_ms < 1800) {
+    if (_ms < _diceMs) {
       final viewer = _viewerBox();
       if (viewer == null) return const SizedBox.shrink();
       final centre = surface.globalToLocal(
@@ -279,68 +303,75 @@ class _TableStageState extends State<TableStage>
       );
       final dice = (roll.public['dice'] as List).cast<int>();
       final settling = !_reducedMotion && _ms < 520;
-      final fade = _reducedMotion ? 1.0 : ((1800 - _ms) / 250).clamp(0.0, 1.0);
+      final fade = _reducedMotion
+          ? 1.0
+          : ((_diceMs - _ms) / 250).clamp(0.0, 1.0);
       return Stack(
         children: [
           Positioned(
-            left: centre.dx - 100,
-            top: centre.dy - 62,
-            width: 200,
-            child: Opacity(
-              opacity: fade,
-              child: Semantics(
-                liveRegion: true,
-                label:
-                    '${roll.name(roll.public['activePlayerId'] as String)} rolled ${dice[0]} and ${dice[1]}, total ${dice[0] + dice[1]}',
-                child: ExcludeSemantics(
-                  child: RepaintBoundary(
-                    child: Container(
-                      key: const Key('roll-dice-overlay'),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xee173e43),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xffd5ba78)),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+            left: centre.dx,
+            top: centre.dy,
+            child: FractionalTranslation(
+              translation: const Offset(-.5, -.5),
+              child: SizedBox(
+                width: math.min(200, viewer.size.width - 16),
+                child: Opacity(
+                  opacity: fade,
+                  child: Semantics(
+                    liveRegion: true,
+                    label:
+                        '${roll.name(roll.public['activePlayerId'] as String)} rolled ${dice[0]} and ${dice[1]}, total ${dice[0] + dice[1]}',
+                    child: ExcludeSemantics(
+                      child: RepaintBoundary(
+                        child: Container(
+                          key: const Key('roll-dice-overlay'),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xee173e43),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xffd5ba78)),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              for (var i = 0; i < 2; i++)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                  ),
-                                  child: Transform.rotate(
-                                    angle: settling
-                                        ? math.sin(_ms / 55 + i) * .16
-                                        : 0,
-                                    child: CustomPaint(
-                                      size: const Size.square(48),
-                                      painter: _DiePainter(
-                                        settling
-                                            ? ((_ms ~/ 75 + i * 2) % 6) + 1
-                                            : dice[i],
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  for (var i = 0; i < 2; i++)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                      ),
+                                      child: Transform.rotate(
+                                        angle: settling
+                                            ? math.sin(_ms / 55 + i) * .16
+                                            : 0,
+                                        child: CustomPaint(
+                                          size: const Size.square(48),
+                                          painter: _DiePainter(
+                                            settling
+                                                ? ((_ms ~/ 75 + i * 2) % 6) + 1
+                                                : dice[i],
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                settling
+                                    ? 'Rolling…'
+                                    : '${dice[0]} + ${dice[1]} = ${dice[0] + dice[1]}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
                                 ),
+                              ),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            settling
-                                ? 'Rolling…'
-                                : '${dice[0]} + ${dice[1]} · ${dice[0] + dice[1]}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -351,19 +382,23 @@ class _TableStageState extends State<TableStage>
         ],
       );
     }
-    if (_reducedMotion || _ms < 2300) return const SizedBox.shrink();
-    final spacing = math.min(140.0, 1400 / math.max(1, _flights.length - 1));
+    if (_reducedMotion || _ms < _flightStart) return const SizedBox.shrink();
+    final index = ((_ms - _flightStart) / (_flightMs + _gapMs)).floor();
+    final elapsed = _ms - _flightStart - index * (_flightMs + _gapMs);
+    // Exactly one icon, with a gap after arrival. The return camera waits for
+    // the last delivery regardless of how many cards the roll awarded.
+    if (index >= _flights.length || elapsed >= _flightMs) {
+      return const SizedBox.shrink();
+    }
     return Stack(
       children: [
-        for (var i = 0; i < _flights.length; i++)
-          if (_ms >= 2300 + i * spacing && _ms <= 2950 + i * spacing)
-            _flyingResource(
-              _flights[i],
-              local,
-              surface,
-              ((_ms - 2300 - i * spacing) / 650).clamp(0, 1),
-              i,
-            ),
+        _flyingResource(
+          _flights[index],
+          local,
+          surface,
+          elapsed / _flightMs,
+          index,
+        ),
       ],
     );
   }
