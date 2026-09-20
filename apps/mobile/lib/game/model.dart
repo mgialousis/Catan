@@ -105,6 +105,8 @@ class ActivityEntry {
   String describe(GameSnapshot s) {
     final who = _name(s, actorPlayerId);
     switch (type) {
+      case 'RESOURCES_COLLECTED':
+        return '$who collected ${_terms(resources)} from the roll.';
       case 'RESOURCES_DISCARDED':
         final summary = resources == null ? '' : resourceSummary(resources!);
         return summary.isEmpty

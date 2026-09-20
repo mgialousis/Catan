@@ -9,6 +9,7 @@ import 'countdown.dart';
 import 'hud.dart';
 import 'model.dart';
 import 'resource_icon.dart';
+import 'table_stage.dart';
 
 const _teal = Color(0xff256f61);
 
@@ -254,6 +255,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
       data: hudTheme(context),
       child: Scaffold(
         backgroundColor: hudBackgroundTop,
+        bottomNavigationBar: snapshot == null
+            ? null
+            : ResourceDock(stock: snapshot.stock, gains: view.rollGains),
         body: HudBackground(
           child: SafeArea(
             child: snapshot == null
@@ -314,7 +318,10 @@ class _GameScreenState extends ConsumerState<GameScreen>
     builder: (context, constraints) {
       final landscape =
           constraints.maxWidth >= 740 && constraints.maxHeight < 600;
-      final board = IslandBoard(
+      final board = TableStage(
+        activity: view.activity,
+        connected: view.connected,
+        onPlayer: (player) => _points(snapshot, player),
         menu: snapshot.complete ? null : _tableMenu(view, snapshot),
         snapshot: snapshot,
         targets: view.selection == null || view.locked
@@ -379,7 +386,10 @@ class _GameScreenState extends ConsumerState<GameScreen>
         return Row(
           children: [
             Expanded(
-              child: Padding(padding: const EdgeInsets.all(12), child: board),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(12),
+                child: board,
+              ),
             ),
             Expanded(child: panels),
           ],
@@ -1130,27 +1140,6 @@ class _GameScreenState extends ConsumerState<GameScreen>
           ),
         ),
         const SizedBox(height: 10),
-        Semantics(
-          label:
-              'Your resources: ${resourceTypes.map((r) => '${s.stock[r]} $r').join(', ')}',
-          child: ExcludeSemantics(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final resource in resourceTypes)
-                  HudResourceCard(
-                    icon: ResourceIcon(resource, size: 26),
-                    // One string, not a name and a count: text finders in the
-                    // suite rely on the resource name being unique on screen.
-                    label: '${words(resource)} ${s.stock[resource]}',
-                    held: (s.stock[resource] ?? 0) > 0,
-                  ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
         if (s.public['hasRolled'] == true) ...[
           Semantics(
             liveRegion: true,

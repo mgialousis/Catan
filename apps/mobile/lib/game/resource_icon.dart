@@ -40,8 +40,24 @@ class _ResourcePainter extends CustomPainter {
     canvas.drawCircle(
       const Offset(16, 16),
       15,
-      paint..color = const Color(0xfff7efdc),
+      paint
+        ..color = switch (resource) {
+          'brick' => const Color(0xffefc7a8),
+          'lumber' => const Color(0xffb6d1a4),
+          'wool' => const Color(0xffd8e6ae),
+          'grain' => const Color(0xfff3da8c),
+          _ => const Color(0xffcbd5d9),
+        },
     );
+    canvas.drawCircle(
+      const Offset(16, 16),
+      15,
+      paint
+        ..color = const Color(0xff9c8351)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+    paint.style = PaintingStyle.fill;
     switch (resource) {
       case 'brick':
         for (final p in [
@@ -64,18 +80,26 @@ class _ResourcePainter extends CustomPainter {
           );
         }
       case 'lumber':
-        for (final x in [11.0, 21.0]) {
-          line(Offset(x, 17), Offset(x, 27), const Color(0xff805638), 3);
-          polygon([
-            Offset(x, 4),
-            Offset(x - 7, 20),
-            Offset(x + 7, 20),
-          ], const Color(0xff286b4b));
-          polygon([
-            Offset(x, 4),
-            Offset(x - 5, 15),
-            Offset(x, 13),
-          ], const Color(0xff63a16b));
+        for (final p in [
+          const Offset(9, 20),
+          const Offset(18, 22),
+          const Offset(13, 13),
+        ]) {
+          line(p, p + const Offset(8, -9), const Color(0xff795536), 8);
+          line(
+            p + const Offset(1, -3),
+            p + const Offset(8, -10),
+            const Color(0xffb68e58),
+            1.5,
+          );
+          oval(
+            Rect.fromCenter(center: p, width: 8, height: 7),
+            const Color(0xffe7c28a),
+          );
+          oval(
+            Rect.fromCenter(center: p, width: 4, height: 3.5),
+            const Color(0xffb88950),
+          );
         }
       case 'wool':
         line(

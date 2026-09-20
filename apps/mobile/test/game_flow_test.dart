@@ -45,7 +45,12 @@ Future<FakePort> showGame(
 }
 
 Future<void> reveal(WidgetTester t, Finder finder) async {
-  final scroll = find.byType(Scrollable).first;
+  final scroll = find
+      .descendant(
+        of: find.byKey(const Key('game-scroll')),
+        matching: find.byType(Scrollable),
+      )
+      .first;
   t.state<ScrollableState>(scroll).position.jumpTo(0);
   await t.pumpAndSettle();
   for (var i = 0; i < 50 && finder.evaluate().isEmpty; i++) {

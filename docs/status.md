@@ -4,6 +4,29 @@ Updated 2026-09-19 (Europe/Zurich), after practice mode, leaving a live game and
 the public release. Use this file for handoff; dated verification documents retain
 historical evidence and are not a statement of the current release.
 
+## Local UI work — 2026-09-20, unreleased
+
+The working tree adds compact player summaries above the island, a persistent
+illustrated resource bar, and a roll presentation: centered dice and total,
+gentle camera focus on the producing tiles, then individual resource icons flying
+to their recipients. Touch cancels the presentation; reduced motion shows a static
+dice result; reconnects do not replay old rolls. A bounded queue handles fast bot
+turns without delaying gameplay. The existing detailed roster remains below the
+board for inspecting player statistics.
+
+Payout animation uses new public `RESOURCES_COLLECTED` activity entries from the
+engine, including the actual amounts after bank shortages and robber blocking.
+Release requires the API, web client and Android APK; no database migration is
+needed. Against an older API, dice and camera feedback work but payout flights
+have no events to display. Published release references below are unchanged.
+
+Validation: 254 Node tests and 339 Flutter tests pass; Flutter analysis and
+`git diff --check` pass. Rendered portrait frames were inspected. Regression tests
+cover retained board artwork during the animation, touch cancellation, reduced
+motion, queued bot rolls, reconnect gaps, and payouts. Physical Android animation
+smoothness remains to be checked; no new deployment or APK has been made for this
+working-tree change.
+
 ## Release and data
 
 - Repository: https://github.com/mgialousis/Catan, **public** since 2026-09-19.

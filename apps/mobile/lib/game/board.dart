@@ -217,6 +217,9 @@ class IslandBoard extends StatefulWidget {
     this.selected,
     required this.onTarget,
     this.menu,
+    this.transformationController,
+    this.sceneKey,
+    this.onInteraction,
   });
   final GameSnapshot snapshot;
   final Set<String> targets;
@@ -226,13 +229,17 @@ class IslandBoard extends StatefulWidget {
   /// Optional control placed beside the title, so the table's own actions sit
   /// with the board rather than scattered through the panels below it.
   final Widget? menu;
+  final TransformationController? transformationController;
+  final GlobalKey? sceneKey;
+  final VoidCallback? onInteraction;
   @override
   State<IslandBoard> createState() => _IslandBoardState();
 }
 
 class _IslandBoardState extends State<IslandBoard>
     with SingleTickerProviderStateMixin {
-  final transform = TransformationController();
+  late final transform =
+      widget.transformationController ?? TransformationController();
   String? hovered;
 
   /// Resolution multiplier the terrain is baked at. Bucketed, and capped at 2:
@@ -276,7 +283,7 @@ class _IslandBoardState extends State<IslandBoard>
   void dispose() {
     reveal.dispose();
     transform.removeListener(_trackZoom);
-    transform.dispose();
+    if (widget.transformationController == null) transform.dispose();
     super.dispose();
   }
 
@@ -312,6 +319,7 @@ class _IslandBoardState extends State<IslandBoard>
         IconButton(
           tooltip: 'Zoom in',
           onPressed: () {
+            widget.onInteraction?.call();
             final scale = transform.value.getMaxScaleOnAxis();
             final factor = math.min(1.25, 3.5 / scale);
             transform.value = transform.value.clone()
@@ -321,7 +329,10 @@ class _IslandBoardState extends State<IslandBoard>
         ),
         IconButton(
           tooltip: 'Fit island',
-          onPressed: () => transform.value = Matrix4.identity(),
+          onPressed: () {
+            widget.onInteraction?.call();
+            transform.value = Matrix4.identity();
+          },
           icon: const Icon(Icons.center_focus_strong),
         ),
         ?widget.menu,
@@ -332,6 +343,7 @@ class _IslandBoardState extends State<IslandBoard>
           aspectRatio: boardSize.aspectRatio,
           child: LayoutBuilder(
             builder: (context, constraints) => InteractiveViewer(
+              onInteractionStart: (_) => widget.onInteraction?.call(),
               transformationController: transform,
               minScale: 1,
               maxScale: 3.5,
@@ -387,6 +399,7 @@ class _IslandBoardState extends State<IslandBoard>
                         if (hovered != null) setState(() => hovered = null);
                       },
                       child: SizedBox.fromSize(
+                        key: widget.sceneKey,
                         size: boardSize,
                         child: Stack(
                           fit: StackFit.expand,

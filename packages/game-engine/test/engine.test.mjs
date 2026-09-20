@@ -53,6 +53,12 @@ test('all 36 dice pairs produce exactly the independently computed non-robbed se
       for (const vertex of h.vertexIds) { const building = original.publicState.buildings[vertex]; if (building) expected[building.ownerPlayerId][TERRAIN_RESOURCE[h.terrain]] += building.type === 'CITY' ? 2 : 1; }
     }
     const result = roll(original, a, b); for (const id of Object.keys(expected)) assert.deepEqual(result.state.privateState[id].resources, expected[id]);
+    const payouts = Object.fromEntries(projectEffects(result.effects, original.serverState.turnOrder[0]).activity
+      .filter(e => e.type === 'RESOURCES_COLLECTED').map(e => [e.actorPlayerId, e.resources]));
+    assert.deepEqual(payouts, Object.fromEntries(Object.entries(expected).filter(([, hand]) => Object.values(hand).some(n => n > 0))));
+    for (const viewer of original.serverState.turnOrder) {
+      assert.deepEqual(projectEffects(result.effects, viewer).activity, projectEffects(result.effects, original.serverState.turnOrder[0]).activity);
+    }
     assert.equal(result.state.publicState.phase, a + b === 7 ? 'ROBBER_MOVE' : 'ACTION');
   }
 });
@@ -66,7 +72,9 @@ test('bank shortage pays remaining stock to one recipient but none to multiple r
     const [hexId, hex] = Object.entries(state.publicState.board.hexes).find(([, h]) => h.number !== null);
     for (let i = 0; i < recipients; i++) { state.publicState.buildings[hex.vertexIds[i * 2]] = { ownerPlayerId: ids[i], type: 'CITY' }; state.publicState.players[ids[i]].remainingPieces.cities--; }
     refreshDerived(state); const type = TERRAIN_RESOURCE[hex.terrain]; resources(state, { [ids[2]]: { [type]: 18 } });
-    const sum = hex.number, a = Math.min(6, sum - 1); const next = roll(state, a, sum - a).state;
+    const sum = hex.number, a = Math.min(6, sum - 1); const result = roll(state, a, sum - a), next = result.state;
+    const payouts = projectEffects(result.effects, ids[0]).activity.filter(e => e.type === 'RESOURCES_COLLECTED');
+    for (let i = 0; i < recipients; i++) assert.equal(payouts.find(e => e.actorPlayerId === ids[i])?.resources[type] ?? 0, recipients === 1 ? 1 : 0);
     for (let i = 0; i < recipients; i++) assert.equal(next.privateState[ids[i]].resources[type], recipients === 1 ? 1 : 0);
     assert.equal(next.serverState.bank[type], recipients === 1 ? 0 : 1);
     const blocked = structuredClone(state); blocked.publicState.robberHexId = hexId; assert.equal(roll(blocked, a, sum - a).state.privateState[ids[0]].resources[type], 0);

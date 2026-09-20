@@ -153,10 +153,19 @@ export function applyCommand(previous: CanonicalState, actorPlayerId: string, co
           const type = TERRAIN_RESOURCE[hex.terrain]; if (id === p.robberHexId || !type || hex.number !== sum) continue;
           for (const vertex of hex.vertexIds) { const b = p.buildings[vertex]; if (b) demand[type][b.ownerPlayerId] = (demand[type][b.ownerPlayerId] ?? 0) + (b.type === 'CITY' ? 2 : 1); }
         }
+        const collected: Record<string, ReturnType<typeof emptyResources>> = {};
         for (const type of RESOURCE_TYPES) {
           const entries = state.serverState.turnOrder.filter(id => demand[type][id]).map(id => [id, demand[type][id]!] as const), required = entries.reduce((sum, [, n]) => sum + n, 0);
           if (bank[type] < required && entries.length > 1) continue;
-          for (const [id, count] of entries) { const resources = emptyResources(); resources[type] = Math.min(count, bank[type]); move(null, id, resources, 'PRODUCTION'); }
+          for (const [id, count] of entries) {
+            const resources = emptyResources(); resources[type] = Math.min(count, bank[type]); move(null, id, resources, 'PRODUCTION');
+            if (resources[type]) { collected[id] ??= emptyResources(); collected[id]![type] += resources[type]; }
+          }
+        }
+        // Production is public. Publish actual payouts, after shortage rules,
+        // so clients can animate collection without guessing at private hands.
+        for (const id of state.serverState.turnOrder) if (collected[id]) {
+          effects.push({ type: 'PUBLIC_ACTIVITY', actorPlayerId: id, action: 'RESOURCES_COLLECTED', message: 'Collected resources from the roll.', resources: collected[id] });
         }
         enter('ACTION');
       }
