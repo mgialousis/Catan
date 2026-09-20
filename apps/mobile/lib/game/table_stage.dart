@@ -7,6 +7,16 @@ import 'model.dart';
 import 'resource_icon.dart';
 import 'roll_presentation.dart';
 
+/// One thing the table shows, played to completion before the next begins, so a
+/// roll, its payout and the following roll never overlap.
+class _Scene {
+  _Scene.roll(this.snapshot) : piece = null;
+  _Scene.piece(this.snapshot, this.piece);
+  final GameSnapshot snapshot;
+  final PlacedPiece? piece;
+  bool get isRoll => piece == null;
+}
+
 /// The table's animation is local presentation; it never delays game commands.
 class TableStage extends StatefulWidget {
   const TableStage({
@@ -43,16 +53,35 @@ class _TableStageState extends State<TableStage>
   static const _flightMs = 1000.0;
   static const _gapMs = 160.0;
   static const _flightStart = _diceMs + _cameraMs;
+  static const _holdMs = 1300.0;
+  // Below the 1.4 terrain-resolution bucket in board.dart: crossing it rebakes
+  // the tiles, which would stutter the very movement meant to be watched.
+  static const _pieceZoom = 1.38;
   final _players = <String, GlobalKey>{};
   final _transform = TransformationController();
   late final _animation = AnimationController.unbounded(
     vsync: this,
     animationBehavior: AnimationBehavior.preserve,
   )..addListener(_tick);
-  GameSnapshot? _roll;
+  _Scene? _showing;
+  // Presentations play in the order the table produced them. Bounded, because a
+  // long backlog would narrate a game nobody is still looking at.
+  final _queue = <_Scene>[];
+  GameSnapshot? _presented;
   List<ResourceFlight> _flights = [];
   Matrix4? _start, _focus;
   bool _reducedMotion = false;
+
+  /// The roll currently on screen, for the parts that only apply to a roll.
+  GameSnapshot? get _roll =>
+      _showing?.isRoll == true ? _showing!.snapshot : null;
+
+  /// While the table is still catching up, the production rings belong to the
+  /// roll it has actually shown; once the queue drains they follow the live game
+  /// again, so a skipped presentation cannot strand them on an old roll.
+  Set<String> get _rings => _showing == null && _queue.isEmpty
+      ? widget.snapshot.producingHexes
+      : (_presented ?? widget.snapshot).producingHexes;
 
   @override
   void didChangeDependencies() {
@@ -75,12 +104,23 @@ class _TableStageState extends State<TableStage>
       _cancel();
       return;
     }
-    // Fast bot turns can roll again before the previous presentation ends. The
-    // newest roll is the one the player is waiting on -- their own, when their
-    // turn has come round -- so it takes over rather than joining a backlog
-    // that arrives too late to mean anything and that the first board touch
-    // would discard anyway.
-    if (isNewRoll(old.snapshot, next)) _begin(next);
+    if (isNewRoll(old.snapshot, next)) {
+      // Your own roll is what you are waiting on before you can act, so it
+      // never queues behind another seat's presentation. Everybody else's takes
+      // its turn, which is what keeps a roll, its payout and the next roll in
+      // order instead of overlapping.
+      if (next.active) {
+        _queue.clear();
+        _begin(_Scene.roll(next));
+      } else {
+        _enqueue(_Scene.roll(next));
+      }
+    } else {
+      // Somebody else placing a piece is worth watching too, and the public
+      // activity says what was built but not where, so the board is diffed.
+      final piece = newPiece(old.snapshot, next);
+      if (piece != null) _enqueue(_Scene.piece(next, piece));
+    }
     // Activity can follow the snapshot in the next update. Accept it during
     // the dice/camera lead-in, then freeze the order once deliveries start.
     if (_roll != null && _ms < _flightStart) {
@@ -90,9 +130,21 @@ class _TableStageState extends State<TableStage>
     }
   }
 
-  void _begin(GameSnapshot roll) {
-    _roll = roll;
-    _flights = resourceFlights(roll, widget.activity);
+  void _enqueue(_Scene scene) {
+    if (_showing == null) {
+      _begin(scene);
+      return;
+    }
+    if (_queue.length == 4) _queue.removeAt(0);
+    _queue.add(scene);
+  }
+
+  void _begin(_Scene scene) {
+    _showing = scene;
+    if (scene.isRoll) _presented = scene.snapshot;
+    _flights = scene.isRoll
+        ? resourceFlights(scene.snapshot, widget.activity)
+        : const [];
     _start = _transform.value.clone();
     _focus = null;
     _animation.value = 0;
@@ -101,7 +153,10 @@ class _TableStageState extends State<TableStage>
 
   void _finish() {
     _animation.stop();
-    setState(() => _roll = null);
+    setState(() {
+      _showing = null;
+      if (_queue.isNotEmpty) _begin(_queue.removeAt(0));
+    });
   }
 
   /// The board is a child of the panel list, and a sibling appearing or
@@ -129,9 +184,67 @@ class _TableStageState extends State<TableStage>
       _flights.length * (_flightMs + _gapMs) -
       (_flights.isEmpty ? 0 : _gapMs) +
       200;
-  double get _endMs => _reducedMotion || _roll!.producingHexes.isEmpty
-      ? _diceMs
-      : _returnAt + _cameraMs;
+  double get _endMs {
+    final scene = _showing!;
+    if (!scene.isRoll) {
+      return _reducedMotion ? _holdMs : 2 * _cameraMs + _holdMs;
+    }
+    return _reducedMotion || scene.snapshot.producingHexes.isEmpty
+        ? _diceMs
+        : _returnAt + _cameraMs;
+  }
+
+  /// A camera that puts a scene point in the middle of the viewer at [zoom]
+  /// without panning past the edge of the board.
+  Matrix4 _look(Offset centre, double zoom, Size viewport) {
+    // Scene coordinates are 720x650. The viewer child is fitted to its width.
+    final scale = viewport.width / boardSize.width;
+    final target = centre * scale;
+    final dx = (viewport.width / 2 - target.dx * zoom).clamp(
+      viewport.width * (1 - zoom),
+      0.0,
+    );
+    final dy = (viewport.height / 2 - target.dy * zoom).clamp(
+      viewport.height * (1 - zoom),
+      0.0,
+    );
+    return Matrix4.identity()
+      ..translateByDouble(dx, dy, 0, 1)
+      ..scaleByDouble(zoom, zoom, 1, 1);
+  }
+
+  /// Zoom to the piece somebody else just placed, hold long enough to register,
+  /// then hand the board back centred.
+  void _tickPiece(_Scene scene) {
+    if (_reducedMotion) {
+      if (_ms >= _endMs) _finish();
+      return;
+    }
+    if (_focus == null) {
+      final viewport = _viewerBox()?.size;
+      if (viewport == null) return;
+      _focus = _look(
+        centreOf(scene.snapshot, scene.piece!.locationId),
+        _pieceZoom,
+        viewport,
+      );
+    }
+    if (_ms <= _cameraMs) {
+      _transform.value = Matrix4Tween(begin: _start, end: _focus).transform(
+        Curves.easeInOutCubic.transform((_ms / _cameraMs).clamp(0, 1)),
+      );
+    } else if (_ms < _cameraMs + _holdMs) {
+      _transform.value = _focus!.clone();
+    } else {
+      _transform.value = Matrix4Tween(begin: _focus, end: Matrix4.identity())
+          .transform(
+            Curves.easeInOutCubic.transform(
+              ((_ms - _cameraMs - _holdMs) / _cameraMs).clamp(0, 1),
+            ),
+          );
+    }
+    if (_ms >= _endMs) _finish();
+  }
 
   void _animateToEnd() {
     _animation.animateTo(
@@ -141,7 +254,12 @@ class _TableStageState extends State<TableStage>
   }
 
   void _tick() {
-    if (_roll == null) return;
+    final showing = _showing;
+    if (showing == null) return;
+    if (!showing.isRoll) {
+      _tickPiece(showing);
+      return;
+    }
     if (_reducedMotion || _roll!.producingHexes.isEmpty) {
       if (_ms >= _diceMs) _finish();
       return;
@@ -159,7 +277,6 @@ class _TableStageState extends State<TableStage>
       final top = points.map((p) => p.dy).reduce(math.min);
       final bottom = points.map((p) => p.dy).reduce(math.max);
       final centre = Offset((left + right) / 2, (top + bottom) / 2);
-      // Scene coordinates are 720x650. The viewer child is fitted to its width.
       final viewport = _viewerBox()?.size;
       if (viewport == null) return;
       // Fit every producing tile and stay below the next texture-resolution
@@ -173,19 +290,7 @@ class _TableStageState extends State<TableStage>
             ),
           )
           .clamp(1.0, 1.32);
-      final scale = viewport.width / boardSize.width;
-      final target = centre * scale;
-      final dx = (viewport.width / 2 - target.dx * zoom).clamp(
-        viewport.width * (1 - zoom),
-        0.0,
-      );
-      final dy = (viewport.height / 2 - target.dy * zoom).clamp(
-        viewport.height * (1 - zoom),
-        0.0,
-      );
-      _focus = Matrix4.identity()
-        ..translateByDouble(dx, dy, 0, 1)
-        ..scaleByDouble(zoom, zoom, 1, 1);
+      _focus = _look(centre, zoom, viewport);
     }
     if (_ms <= _flightStart) {
       _transform.value = Matrix4Tween(begin: _start, end: _focus).transform(
@@ -196,11 +301,14 @@ class _TableStageState extends State<TableStage>
     } else if (_ms < _returnAt) {
       _transform.value = _focus!.clone();
     } else {
-      _transform.value = Matrix4Tween(begin: _focus, end: _start).transform(
-        Curves.easeInOutCubic.transform(
-          ((_ms - _returnAt) / _cameraMs).clamp(0, 1),
-        ),
-      );
+      // Hand the board back centred rather than wherever the camera started,
+      // so the next roll always begins from the same view of the island.
+      _transform.value = Matrix4Tween(begin: _focus, end: Matrix4.identity())
+          .transform(
+            Curves.easeInOutCubic.transform(
+              ((_ms - _returnAt) / _cameraMs).clamp(0, 1),
+            ),
+          );
     }
     if (_ms >= _endMs) _finish();
   }
@@ -208,11 +316,12 @@ class _TableStageState extends State<TableStage>
   RenderBox? _viewerBox() => _box(_viewport);
 
   void _cancel() {
-    if (_roll == null) return;
+    _queue.clear();
+    if (_showing == null) return;
     _animation.stop();
     // Keep the current camera position when interrupted; the user's next
     // gesture takes over without an unexpected snap back.
-    setState(() => _roll = null);
+    setState(() => _showing = null);
   }
 
   @override
@@ -269,7 +378,7 @@ class _TableStageState extends State<TableStage>
               const SizedBox(height: 4),
               IslandBoard(
                 snapshot: s,
-                producing: (_roll ?? s).producingHexes,
+                producing: _rings,
                 targets: widget.targets,
                 selected: widget.selected,
                 onTarget: widget.onTarget,
@@ -295,6 +404,8 @@ class _TableStageState extends State<TableStage>
   }
 
   Widget _overlay() {
+    final showing = _showing;
+    if (showing != null && !showing.isRoll) return _pieceLabel(showing);
     final roll = _roll;
     final scene = _box(_scene), surface = _box(_surface);
     if (roll == null || scene == null || surface == null) {
@@ -405,6 +516,68 @@ class _TableStageState extends State<TableStage>
           surface,
           elapsed / _flightMs,
           index,
+        ),
+      ],
+    );
+  }
+
+  /// Names what another seat just placed. The camera shows where; this says who
+  /// and what, because a road appearing at the edge of vision is easy to miss.
+  Widget _pieceLabel(_Scene scene) {
+    final surface = _box(_surface), viewer = _viewerBox();
+    if (surface == null || viewer == null) return const SizedBox.shrink();
+    final piece = scene.piece!;
+    final says = piece.what == 'city'
+        ? 'upgraded to a city'
+        : 'built a ${piece.what}';
+    final message = '${scene.snapshot.name(piece.playerId)} $says';
+    final fade = _reducedMotion
+        ? 1.0
+        : math.min(
+            (_ms / 200).clamp(0.0, 1.0),
+            ((_endMs - _ms) / 250).clamp(0.0, 1.0),
+          );
+    final origin = surface.globalToLocal(viewer.localToGlobal(Offset.zero));
+    return Stack(
+      children: [
+        Positioned(
+          left: origin.dx,
+          top: origin.dy + 10,
+          width: viewer.size.width,
+          child: Center(
+            child: Opacity(
+              opacity: fade,
+              child: Semantics(
+                liveRegion: true,
+                label: message,
+                child: ExcludeSemantics(
+                  child: RepaintBoundary(
+                    child: Container(
+                      key: const Key('build-focus-label'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xee173e43),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xffd5ba78)),
+                      ),
+                      child: Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );

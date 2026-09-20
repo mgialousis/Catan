@@ -55,3 +55,36 @@ List<ResourceFlight> resourceFlights(
   }
   return result;
 }
+
+/// A piece another player just placed, so the table can show where it went.
+/// Derived by comparing consecutive snapshots: the public activity records that
+/// something was built but not where, and the board geometry is already local.
+class PlacedPiece {
+  const PlacedPiece(this.locationId, this.playerId, this.what);
+  final String locationId, playerId, what;
+}
+
+PlacedPiece? newPiece(GameSnapshot before, GameSnapshot after) {
+  if (before.roomId != after.roomId ||
+      after.version != before.version + 1 ||
+      after.public['activePlayerId'] == after.playerId) {
+    return null;
+  }
+  for (final (collection, previous, what) in [
+    (after.buildings, before.buildings, 'settlement'),
+    (after.roads, before.roads, 'road'),
+  ]) {
+    for (final entry in collection.entries) {
+      final owner = (entry.value as Map)['ownerPlayerId'] as String?;
+      if (owner == null || owner == after.playerId) continue;
+      final was = previous[entry.key] as Map?;
+      if (was == null) return PlacedPiece(entry.key, owner, what);
+      // An upgrade replaces a settlement in place, so the key already existed.
+      if (was['type'] != (entry.value as Map)['type'] &&
+          (entry.value as Map)['type'] == 'CITY') {
+        return PlacedPiece(entry.key, owner, 'city');
+      }
+    }
+  }
+  return null;
+}

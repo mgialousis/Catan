@@ -89,3 +89,33 @@ export function botMove(
   const result = applyCommand(state, job.playerId, command, { now, random });
   return { actor: job.playerId, command, result: { ...result, state: advanceClock(state, result.state, now, random) } };
 }
+
+/**
+ * How long to leave the table alone after a move, so the client finishes
+ * presenting it before the next one starts. Without this the board resolves a
+ * roll while the payout from the previous one is still flying.
+ *
+ * These mirror the presentation durations in
+ * `apps/mobile/lib/game/table_stage.dart`. There is no shared constant across
+ * the two languages; a drift only makes the pacing slightly loose or tight, so
+ * the client queues presentations rather than trusting these numbers.
+ */
+const DICE_MS = 2800, CAMERA_MS = 600, FLIGHT_MS = 1000, GAP_MS = 160, PAD_MS = 200, HOLD_MS = 1300;
+export const BOT_BASE_PACE_MS = 900;
+const BUILDS = ['BUILD_ROAD', 'BUILD_SETTLEMENT', 'BUILD_CITY'];
+
+export function botPace(commandType: string | null, activity: readonly unknown[] = []): number {
+  if (commandType === null) return BOT_BASE_PACE_MS;
+  if (BUILDS.includes(commandType)) return 2 * CAMERA_MS + HOLD_MS;
+  if (commandType !== 'ROLL_DICE') return BOT_BASE_PACE_MS;
+  // One icon flies per card delivered, so the payout's length is the number of
+  // cards the roll actually paid out, after bank shortages and the robber.
+  let cards = 0;
+  for (const entry of activity) {
+    const record = entry as { action?: unknown; resources?: Record<string, unknown> } | null;
+    if (!record || record.action !== 'RESOURCES_COLLECTED' || !record.resources) continue;
+    for (const amount of Object.values(record.resources)) if (typeof amount === 'number') cards += amount;
+  }
+  if (cards === 0) return DICE_MS;
+  return DICE_MS + CAMERA_MS + cards * FLIGHT_MS + (cards - 1) * GAP_MS + PAD_MS + CAMERA_MS;
+}

@@ -6,14 +6,13 @@ import { applyCommand, createGame, assertInvariants, projectGame, projectEffects
 import { Database } from './database.js';
 import type { Rooms } from './rooms.js';
 import { canonical, hash, LobbyError } from './lobby-policy.js';
-import { botJobs, botMove, botDifficulty, matchesBotJob, type BotJob } from './bot-runner.js';
+import { botJobs, botMove, botDifficulty, botPace, matchesBotJob, BOT_BASE_PACE_MS, type BotJob } from './bot-runner.js';
 
 /**
  * How long an automated seat waits before moving. Long enough that a practice
  * game reads like people playing rather than the board resolving itself, short
  * enough that a turn of bots does not feel like waiting for a server.
  */
-const BOT_PACE_MS = 900;
 
 /** Seats whose player has walked out and which nobody has filled yet. */
 function vacantSeats(state: CanonicalState): string[] {
@@ -373,8 +372,12 @@ export class Games {
       const state = this.state(row), now = await this.now(db);
       if (!matchesBotJob(state, job)) return 'STALE' as const;
       // Moves are paced so a practice game reads like people playing rather
-      // than the board resolving itself the instant a turn passes.
-      if (Date.parse(now) - row.updated_at.getTime() < BOT_PACE_MS) return 'EARLY' as const;
+      // than the board resolving itself the instant a turn passes, and so the
+      // client has finished presenting the previous move: a roll's payout is
+      // never cut short by the next roll.
+      const previous = (await db.query('SELECT command_type,public_activity FROM app.move_logs WHERE room_id=$1 ORDER BY sequence DESC LIMIT 1', [job.roomId])).rows[0];
+      const pace = botPace(previous?.command_type ?? null, previous?.public_activity ?? []);
+      if (Date.parse(now) - row.updated_at.getTime() < pace) return 'EARLY' as const;
       const move = botMove(state, job, botDifficulty(room.settings), now, engineContext().random);
       if (!move) return 'STALE' as const;
       await this.persist(db, room, state, move.result, move.actor, move.command, undefined, { botDifficulty: botDifficulty(room.settings) });
@@ -472,7 +475,7 @@ export class Games {
         }
       });
       // Keep ticking while a paced move is still waiting to land.
-      if (botsPending || seats.length) delay = Math.min(delay ?? BOT_PACE_MS, BOT_PACE_MS);
+      if (botsPending || seats.length) delay = Math.min(delay ?? BOT_BASE_PACE_MS, BOT_BASE_PACE_MS);
       this.clocksRunning = clocksRunning;
       await this.flush(); await this.rooms.flush();
     } catch (error) {
