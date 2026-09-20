@@ -4,7 +4,7 @@ The [Android APK workflow](https://github.com/mgialousis/Catan/actions/workflows
 produces a signed release APK for the hosted game. It runs on changes to app/protocol/build files
 on `main`, or manually with **Run workflow**. It does not deploy Render services.
 
-Latest verified client: [build 17](https://github.com/mgialousis/Catan/actions/runs/35503515433),
+Latest verified client: [build 18](https://github.com/mgialousis/Catan/actions/runs/35504163157),
 commit `812d023`, signed release APK, successful. It includes the player summaries,
 persistent resource bar, dice presentation, camera focus and resource collection
 animation. Both hosted services run the same code. See [release verification](release-2026-09-20.md).
@@ -22,7 +22,7 @@ animation. Both hosted services run the same code. See [release verification](re
 Each successful main-branch build replaces the rolling release download. Individual
 workflow artifacts are also available for 30 days but require GitHub sign-in. The same
 release signing key is used for every build; version codes increase with the workflow
-run number (`1000 + run number`). Build 17 uses version code `1017` and app label `Catan`.
+run number (`1000 + run number`). Build 18 uses version code `1018` and app label `Catan`.
 Physical-device acceptance is still a separate Phase 7 check.
 
 ## Configuration

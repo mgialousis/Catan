@@ -15,11 +15,20 @@ board for inspecting player statistics.
 
 Payout animation uses new public `RESOURCES_COLLECTED` activity entries from the
 engine, including the actual amounts after bank shortages and robber blocking.
-The API and web are live on this commit, and signed Android build 17 is published.
 No database migration was needed. Against an older API, dice and camera feedback
 work but payout flights have no events to display.
 
-Validation: 254 Node tests and 339 Flutter tests pass; Flutter analysis and
+Follow-up `2326130` centres the dice on the map viewport rather than at a fixed
+offset, so they no longer drift with larger text; restores `=` in the total;
+holds the dice a second longer; and delivers payouts strictly one at a time.
+It is client-only, so the API still runs `812d023` and was not restarted — the
+engine effect the animations consume already shipped there. Live now: web and
+signed Android **build 18** on `2326130`, API on `812d023`. Verify with
+`git diff --name-only <deployed>..HEAD -- apps/server packages/ supabase/`
+before assuming the API needs a deploy; here it did not, and a practice game
+was played straight through the web deployment without interruption.
+
+Validation: 254 Node tests and 342 Flutter tests pass; Flutter analysis and
 `git diff --check` pass. Rendered portrait frames were inspected. Regression tests
 cover retained board artwork during the animation, touch cancellation, reduced
 motion, queued bot rolls, reconnect gaps, and payouts. Hosted preflight passed after deployment. Both previously paused games retained
