@@ -1,12 +1,11 @@
 # Current project status
 
-Updated 2026-09-19 (Europe/Zurich), after practice mode, leaving a live game and
-the public release. Use this file for handoff; dated verification documents retain
+Updated 2026-09-20 (Europe/Zurich), after the roll-feedback release. Use this file for handoff; dated verification documents retain
 historical evidence and are not a statement of the current release.
 
-## Local UI work — 2026-09-20, unreleased
+## Roll feedback release — 2026-09-20
 
-The working tree adds compact player summaries above the island, a persistent
+Release `812d023` adds compact player summaries above the island, a persistent
 illustrated resource bar, and a roll presentation: centered dice and total,
 gentle camera focus on the producing tiles, then individual resource icons flying
 to their recipients. Touch cancels the presentation; reduced motion shows a static
@@ -16,16 +15,16 @@ board for inspecting player statistics.
 
 Payout animation uses new public `RESOURCES_COLLECTED` activity entries from the
 engine, including the actual amounts after bank shortages and robber blocking.
-Release requires the API, web client and Android APK; no database migration is
-needed. Against an older API, dice and camera feedback work but payout flights
-have no events to display. Published release references below are unchanged.
+The API and web are live on this commit, and signed Android build 17 is published.
+No database migration was needed. Against an older API, dice and camera feedback
+work but payout flights have no events to display.
 
 Validation: 254 Node tests and 339 Flutter tests pass; Flutter analysis and
 `git diff --check` pass. Rendered portrait frames were inspected. Regression tests
 cover retained board artwork during the animation, touch cancellation, reduced
-motion, queued bot rolls, reconnect gaps, and payouts. Physical Android animation
-smoothness remains to be checked; no new deployment or APK has been made for this
-working-tree change.
+motion, queued bot rolls, reconnect gaps, and payouts. Hosted preflight passed after deployment. Both previously paused games retained
+their exact state hashes, turns, versions and log counts. Physical Android animation
+smoothness remains to be checked. See [release verification](release-2026-09-20.md).
 
 ## Release and data
 
@@ -33,20 +32,16 @@ working-tree change.
   History was audited for credentials first; only `.env.example` placeholders and
   deliberately fake test fixtures matched. Phases 1–6 are implemented and a solo
   practice mode against bots ships on top of them; Phase 7 acceptance remains partial.
-- Web: `65a45b7`,
+- Web: `812d023`,
   [live](https://dashboard.render.com/static/srv-dajgfdnqj5pc73dhl33g).
-- API: `0b3cc35`,
-  [live](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330). It sits behind
-  `main` on purpose: every commit since touches only `apps/mobile` or the workflow,
-  and redeploying would have interrupted a practice game in progress for no
-  behaviour change. Check with
-  `git diff --name-only <deployed>..HEAD -- apps/server packages/ supabase/`
-  before assuming an API deploy is needed.
+- API: `812d023`,
+  [live](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330).
 - Android: signed build published to a rolling release. Downloads **without a
   GitHub account**, unlike a build artifact, which requires one whatever the
   repository's visibility:
   https://github.com/mgialousis/Catan/releases/download/android-latest/island-table.apk
-  Verified anonymously at 55.0 MB against the adjacent `SHA256SUMS`. Each build of
+  Build 17 (`812d023`, version code `1017`) verified anonymously at 55,226,920 bytes
+  against the adjacent `SHA256SUMS`, with the existing release signing certificate. Each build of
   `main` replaces both files; the URL does not change.
 - Both Render services are Frankfurt, Free plan, one instance, automatic deploys
   disabled. No paid resource is enabled.

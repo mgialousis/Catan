@@ -4,24 +4,26 @@ The [Android APK workflow](https://github.com/mgialousis/Catan/actions/workflows
 produces a signed release APK for the hosted game. It runs on changes to app/protocol/build files
 on `main`, or manually with **Run workflow**. It does not deploy Render services.
 
-Latest verified client: [build 10](https://github.com/mgialousis/Catan/actions/runs/34893289994),
-commit `7833c74`, signed release APK, successful. See [current status](status.md) for
-API-only fixes that do not require reinstalling the app. The early build verification
-below is a historical checksum record, not the latest download.
+Latest verified client: [build 17](https://github.com/mgialousis/Catan/actions/runs/35503515433),
+commit `812d023`, signed release APK, successful. It includes the player summaries,
+persistent resource bar, dice presentation, camera focus and resource collection
+animation. Both hosted services run the same code. See [release verification](release-2026-09-20.md).
 
 ## Download and install
 
-1. Open a successful workflow run and download `island-table-android-<run number>` from **Artifacts**.
-   GitHub requires sign-in to download workflow artifacts.
-2. Extract the ZIP. It contains `island-table.apk` and `SHA256SUMS`.
-3. Open the APK on Android and allow installation from the browser/file manager when Android asks.
+1. Download [the latest APK](https://github.com/mgialousis/Catan/releases/download/android-latest/island-table.apk).
+   This public release download requires no GitHub account. The adjacent
+   [SHA256SUMS](https://github.com/mgialousis/Catan/releases/download/android-latest/SHA256SUMS)
+   verifies the download.
+2. Open the APK on Android and allow installation from the browser/file manager when Android asks.
+3. Install it as an update. Keep the existing app data to preserve your guest identity and game seat.
    To install through a connected computer, use `adb install -r island-table.apk`.
 
-Artifacts are retained for 30 days; run the workflow again if a download expires. The same release
-signing key is used for every build, and version codes increase with the workflow run number
-(`1000 + run number`), allowing updates while retaining the guest identity. Avoid uninstalling or
-clearing app data if you want to keep a seat in an existing game. Physical-device acceptance is
-still a separate Phase 7 check.
+Each successful main-branch build replaces the rolling release download. Individual
+workflow artifacts are also available for 30 days but require GitHub sign-in. The same
+release signing key is used for every build; version codes increase with the workflow
+run number (`1000 + run number`). Build 17 uses version code `1017` and app label `Catan`.
+Physical-device acceptance is still a separate Phase 7 check.
 
 ## Configuration
 
@@ -58,5 +60,5 @@ and its checksum are uploaded. Keep the original `.local/signing` backup private
 the key for app updates. Never add signing material or database/operator credentials to Git.
 
 Signing runs only for this repository's `main` branch, not pull requests or forks. The workflow
-token has read-only repository contents access. Public repository visibility does not reveal
+token has repository contents write access to publish the rolling APK release. Public repository visibility does not reveal
 GitHub secret values.
