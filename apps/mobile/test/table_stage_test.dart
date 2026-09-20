@@ -250,7 +250,7 @@ void main() {
     );
   }
 
-  testWidgets('fast subsequent turns queue rolls without blocking the board', (
+  testWidgets('a superseded roll is dropped, never replayed late', (
     tester,
   ) async {
     final f = rollFixture();
@@ -291,10 +291,12 @@ void main() {
     next['publicState']['phase'] = 'ACTION';
     update(() => snapshot = GameSnapshot.parse(next, uiProtocol));
     await tester.pump();
-    expect(find.text('2 + 3 = 5'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 7000));
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.text('3 + 3 = 6'), findsOneWidget);
+    // The overtaken roll is gone for good; it must not surface again once the
+    // newer presentation finishes, minutes behind the table it describes.
+    await tester.pump(const Duration(milliseconds: 7000));
+    expect(find.text('2 + 3 = 5'), findsNothing);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('roll-dice-overlay')), findsNothing);
     expect(tester.takeException(), isNull);
@@ -423,4 +425,125 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  /// Bug: your own roll never animated. A bot presentation was usually still
+  /// running when your turn came, so your roll went into a queue behind it --
+  /// and the first board touch to build cleared that queue. The newest roll is
+  /// the one worth watching, so it takes over immediately.
+  testWidgets('your own roll takes over a running bot presentation', (
+    tester,
+  ) async {
+    final f = rollFixture();
+    var snapshot = f.before;
+    late StateSetter update;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                update = setState;
+                return TableStage(
+                  snapshot: snapshot,
+                  activity: f.activity,
+                  onTarget: (_) {},
+                  onPlayer: (_) {},
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // A bot rolls, and its presentation is still on screen.
+    update(() => snapshot = f.after);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('2 + 3 = 5'), findsOneWidget);
+    // The bot ends its turn and you roll, all while that is still showing.
+    final mine = object(jsonDecode(jsonEncode(f.before.json)));
+    mine['version'] = f.after.version + 1;
+    mine['publicState']['turnNumber']++;
+    update(() => snapshot = GameSnapshot.parse(mine, uiProtocol));
+    await tester.pump();
+    mine['version']++;
+    mine['publicState']['hasRolled'] = true;
+    mine['publicState']['dice'] = [3, 3];
+    mine['publicState']['phase'] = 'ACTION';
+    update(() => snapshot = GameSnapshot.parse(mine, uiProtocol));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(
+      find.text('3 + 3 = 6'),
+      findsOneWidget,
+      reason:
+          'Your roll must be shown when it happens, not minutes of bot '
+          'presentations later.',
+    );
+    expect(find.text('2 + 3 = 5'), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('roll-dice-overlay')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  /// Bug: the cyan production rings read the live snapshot while the dice
+  /// overlay showed an older roll, so the two disagreed. Ending a turn clears
+  /// the dice, which used to wipe the rings mid-presentation.
+  testWidgets('production rings follow the roll being presented', (
+    tester,
+  ) async {
+    final f = rollFixture();
+    var snapshot = f.before;
+    late StateSetter update;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                update = setState;
+                return TableStage(
+                  snapshot: snapshot,
+                  activity: f.activity,
+                  onTarget: (_) {},
+                  onPlayer: (_) {},
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    update(() => snapshot = f.after);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    final rolled = f.after.producingHexes;
+    expect(rolled, isNotEmpty);
+    Set<String> rings() =>
+        tester.widget<IslandBoard>(find.byType(IslandBoard)).producing ??
+        tester
+            .widget<IslandBoard>(find.byType(IslandBoard))
+            .snapshot
+            .producingHexes;
+    expect(rings(), rolled);
+    // The turn ends while the presentation is still running. The live snapshot
+    // has no dice any more, but the rings belong to the roll on screen.
+    final ended = object(jsonDecode(jsonEncode(f.after.json)));
+    ended['version']++;
+    ended['publicState']['hasRolled'] = false;
+    ended['publicState']['dice'] = null;
+    ended['publicState']['turnNumber']++;
+    update(() => snapshot = GameSnapshot.parse(ended, uiProtocol));
+    await tester.pump();
+    expect(find.text('2 + 3 = 5'), findsOneWidget);
+    expect(
+      rings(),
+      rolled,
+      reason: 'The rings must not empty out from under the dice still showing.',
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }

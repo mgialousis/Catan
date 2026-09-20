@@ -319,6 +319,12 @@ class _GameScreenState extends ConsumerState<GameScreen>
       final landscape =
           constraints.maxWidth >= 740 && constraints.maxHeight < 600;
       final board = TableStage(
+        // The panels above the board come and go -- a sending notice, banners,
+        // the countdown -- and an unkeyed list child is matched by position, so
+        // every one of those shifts used to rebuild the board's element and
+        // lose the roll it was presenting. Your own roll always arrives with a
+        // pending notice, which is why it was the one that never animated.
+        key: const Key('table-stage'),
         activity: view.activity,
         connected: view.connected,
         onPlayer: (player) => _points(snapshot, player),

@@ -8,6 +8,7 @@ import 'package:island_table/game/game_screen.dart';
 import 'package:island_table/game/model.dart';
 import 'game_model_test.dart' show uiProtocol, uiSnapshot;
 import 'game_test.dart' show FakePort;
+import 'table_stage_test.dart' show rollFixture;
 
 void main() {
   /// Pause and leave live behind the table menu now, so a test has to open it
@@ -274,4 +275,54 @@ void main() {
       await t.pumpWidget(const SizedBox());
     },
   );
+
+  /// Bug: rolling on your own turn showed no dice or resource animation, while
+  /// a bot's roll animated normally. Sending a command inserts a "sending"
+  /// panel above the board, and the acknowledgement removes it again. The board
+  /// was an unkeyed list child, so each shift rebuilt its element from scratch
+  /// and the roll transition never reached the presentation.
+  testWidgets('rolling on your own turn animates through the real screen', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(430, 1400);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final f = rollFixture();
+    final port = FakePort();
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [
+          gamePortProvider.overrideWithValue(port),
+          protocolProvider.overrideWithValue(uiProtocol),
+        ],
+        child: const MaterialApp(home: GameScreen(isHost: true)),
+      ),
+    );
+    await t.pump();
+    port.emit('connected', true);
+    port.emit('snapshot', f.before.json);
+    await t.pumpAndSettle();
+    // Roll exactly as a player does, so the pending panel really appears.
+    await t.tap(find.text('Roll dice'));
+    await t.pump();
+    expect(port.commands.single['type'], 'ROLL_DICE');
+    port.replies.single.complete({'version': f.after.version});
+    port.emit('snapshot', f.after.json);
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 600));
+    expect(
+      find.byKey(const Key('roll-dice-overlay')),
+      findsOneWidget,
+      reason: 'Your own roll must animate, not only other players\' rolls.',
+    );
+    // The HUD readout also shows the total, so scope this to the overlay.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('roll-dice-overlay')),
+        matching: find.text('2 + 3 = 5'),
+      ),
+      findsOneWidget,
+    );
+    await t.pumpWidget(const SizedBox());
+  });
 }

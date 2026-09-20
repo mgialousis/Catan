@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'board.dart';
 import 'hud.dart';
 import 'model.dart';
@@ -50,7 +51,6 @@ class _TableStageState extends State<TableStage>
   )..addListener(_tick);
   GameSnapshot? _roll;
   List<ResourceFlight> _flights = [];
-  final _queuedRolls = <GameSnapshot>[];
   Matrix4? _start, _focus;
   bool _reducedMotion = false;
 
@@ -75,16 +75,12 @@ class _TableStageState extends State<TableStage>
       _cancel();
       return;
     }
-    if (isNewRoll(old.snapshot, next)) {
-      if (_roll == null) {
-        _begin(next);
-      } else {
-        // Fast bot turns may advance before the presentation finishes. Keep a
-        // small queue; never build an unbounded visual backlog after recovery.
-        if (_queuedRolls.length == 3) _queuedRolls.removeAt(0);
-        _queuedRolls.add(next);
-      }
-    }
+    // Fast bot turns can roll again before the previous presentation ends. The
+    // newest roll is the one the player is waiting on -- their own, when their
+    // turn has come round -- so it takes over rather than joining a backlog
+    // that arrives too late to mean anything and that the first board touch
+    // would discard anyway.
+    if (isNewRoll(old.snapshot, next)) _begin(next);
     // Activity can follow the snapshot in the next update. Accept it during
     // the dice/camera lead-in, then freeze the order once deliveries start.
     if (_roll != null && _ms < _flightStart) {
@@ -105,14 +101,25 @@ class _TableStageState extends State<TableStage>
 
   void _finish() {
     _animation.stop();
-    setState(() {
-      _roll = null;
-      if (_queuedRolls.isNotEmpty) _begin(_queuedRolls.removeAt(0));
-    });
+    setState(() => _roll = null);
   }
 
-  RenderBox? _box(GlobalKey key) =>
-      key.currentContext?.findRenderObject() as RenderBox?;
+  /// The board is a child of the panel list, and a sibling appearing or
+  /// disappearing above it can leave that child unpositioned for the frame the
+  /// list is relaying out. Reading a transform through an unpositioned sliver
+  /// child throws, so treat it as not measurable yet and skip a frame instead.
+  RenderBox? _box(GlobalKey key) {
+    final box = key.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || !box.hasSize) return null;
+    for (RenderObject? node = box; node != null; node = node.parent) {
+      final data = node.parentData;
+      if (data is SliverMultiBoxAdaptorParentData &&
+          data.layoutOffset == null) {
+        return null;
+      }
+    }
+    return box;
+  }
 
   // Controller values are elapsed milliseconds, so a late payout can extend
   // the sequence without jumping forward or changing a flight's speed.
@@ -201,7 +208,6 @@ class _TableStageState extends State<TableStage>
   RenderBox? _viewerBox() => _box(_viewport);
 
   void _cancel() {
-    _queuedRolls.clear();
     if (_roll == null) return;
     _animation.stop();
     // Keep the current camera position when interrupted; the user's next
@@ -263,6 +269,7 @@ class _TableStageState extends State<TableStage>
               const SizedBox(height: 4),
               IslandBoard(
                 snapshot: s,
+                producing: (_roll ?? s).producingHexes,
                 targets: widget.targets,
                 selected: widget.selected,
                 onTarget: widget.onTarget,

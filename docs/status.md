@@ -1,6 +1,7 @@
 # Current project status
 
-Updated 2026-09-20 (Europe/Zurich), after the roll-feedback release. Use this file for handoff; dated verification documents retain
+Updated 2026-09-20 (Europe/Zurich), after the roll-feedback release and its
+two reported-defect fixes. Use this file for handoff; dated verification documents retain
 historical evidence and are not a statement of the current release.
 
 ## Roll feedback release — 2026-09-20
@@ -9,8 +10,8 @@ Release `812d023` adds compact player summaries above the island, a persistent
 illustrated resource bar, and a roll presentation: centered dice and total,
 gentle camera focus on the producing tiles, then individual resource icons flying
 to their recipients. Touch cancels the presentation; reduced motion shows a static
-dice result; reconnects do not replay old rolls. A bounded queue handles fast bot
-turns without delaying gameplay. The existing detailed roster remains below the
+dice result; reconnects do not replay old rolls. A newer roll takes over the
+presentation rather than waiting behind it. The existing detailed roster remains below the
 board for inspecting player statistics.
 
 Payout animation uses new public `RESOURCES_COLLECTED` activity entries from the
@@ -28,10 +29,20 @@ signed Android **build 18** on `2326130`, API on `812d023`. Verify with
 before assuming the API needs a deploy; here it did not, and a practice game
 was played straight through the web deployment without interruption.
 
-Validation: 254 Node tests and 342 Flutter tests pass; Flutter analysis and
+Two defects the user hit while playing build 18 are now fixed, client-only and
+**not yet deployed**. Your own roll never animated: the board was an unkeyed
+child of the panel list, so the "sending" notice every command inserts shifted
+its index and rebuilt its element, discarding the presentation and the camera
+with it. A bot's roll sets no pending notice, which is why only your own was
+affected. The cyan production rings were read from the live snapshot while the
+overlay presented an older queued roll, and ending a turn emptied them from
+under a presentation still running; they now follow the roll being presented,
+and rolls are no longer queued — a newer one takes over.
+
+Validation: 254 Node tests and 345 Flutter tests pass; Flutter analysis and
 `git diff --check` pass. Rendered portrait frames were inspected. Regression tests
 cover retained board artwork during the animation, touch cancellation, reduced
-motion, queued bot rolls, reconnect gaps, and payouts. Hosted preflight passed after deployment. Both previously paused games retained
+motion, superseded rolls, reconnect gaps, and payouts. Hosted preflight passed after deployment. Both previously paused games retained
 their exact state hashes, turns, versions and log counts. Physical Android animation
 smoothness remains to be checked. See [release verification](release-2026-09-20.md).
 

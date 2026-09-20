@@ -216,6 +216,7 @@ class IslandBoard extends StatefulWidget {
     this.targets = const {},
     this.selected,
     required this.onTarget,
+    this.producing,
     this.menu,
     this.transformationController,
     this.sceneKey,
@@ -226,6 +227,11 @@ class IslandBoard extends StatefulWidget {
   final Set<String> targets;
   final String? selected;
   final ValueChanged<String> onTarget;
+
+  /// Hexes to ring as having just paid out. Defaults to the snapshot's own last
+  /// roll; an animating table overrides it with the roll it is presenting, so
+  /// the rings and the dice on screen always describe the same roll.
+  final Set<String>? producing;
 
   /// Optional control placed beside the title, so the table's own actions sit
   /// with the board rather than scattered through the panels below it.
@@ -432,6 +438,8 @@ class _IslandBoardState extends State<IslandBoard>
                                   widget.targets,
                                   widget.selected,
                                   widget.onTarget,
+                                  widget.producing ??
+                                      widget.snapshot.producingHexes,
                                   hovered: hovered,
                                   reveal: reveal,
                                 ),
@@ -1619,8 +1627,8 @@ class _IslandArtwork {
   /// Rings the hexes the last roll paid out from. It belongs to the feedback
   /// layer because it changes on every roll, while the terrain beneath it does
   /// not and stays baked.
-  void producing(Canvas c) {
-    for (final id in s.producingHexes) {
+  void producing(Canvas c, Set<String> hexes) {
+    for (final id in hexes) {
       final path = Path()..addPolygon(_hexPoints(s, id), true);
       c.save();
       c.clipPath(path);
@@ -1787,7 +1795,8 @@ class IslandPainter extends CustomPainter {
     this.s,
     this.targets,
     this.selected,
-    this.onTarget, {
+    this.onTarget,
+    this.producing, {
     this.hovered,
     this.reveal,
   }) : super(repaint: reveal);
@@ -1796,13 +1805,14 @@ class IslandPainter extends CustomPainter {
   final Set<String> targets;
   final String? selected;
   final ValueChanged<String> onTarget;
+  final Set<String> producing;
   final String? hovered;
   final Animation<double>? reveal;
 
   @override
   void paint(Canvas canvas, Size size) {
     final artwork = _IslandArtwork(s);
-    artwork.producing(canvas);
+    artwork.producing(canvas, producing);
     artwork.hover(canvas, hovered);
     // Read the live value on each tick; capturing it in the constructor freezes
     // the effect while still scheduling all the animation's repaints.
@@ -1859,7 +1869,7 @@ class IslandPainter extends CustomPainter {
       !_sameJson(oldDelegate.s.board, s.board) ||
       // The board itself never changes mid-game, so a new roll would otherwise
       // never reach this layer.
-      !setEquals(oldDelegate.s.producingHexes, s.producingHexes) ||
+      !setEquals(oldDelegate.producing, producing) ||
       !setEquals(oldDelegate.targets, targets) ||
       oldDelegate.selected != selected ||
       oldDelegate.hovered != hovered ||
