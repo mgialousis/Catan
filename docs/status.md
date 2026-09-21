@@ -3,11 +3,12 @@
 Updated 2026-09-21 (Europe/Zurich). Use this file for handoff; dated
 verification documents retain historical evidence, not current deployment status.
 
-## Current handoff — review fixes prepared for release
+## Current handoff — review fixes released and verified
 
-- Reviewed baseline: `8838b52`. GitHub Android build **28** completed successfully
-  for that commit: https://github.com/mgialousis/Catan/actions/runs/35528690226.
-  This confirms the workflow result; it does not constitute a physical-device test.
+- Fixes committed and pushed as `e8744ee`. Android **build 29** succeeded and
+  published the signed APK: https://github.com/mgialousis/Catan/actions/runs/35619647214.
+  Downloaded APK checksum, version code `1029` and existing signing certificate
+  verified. Physical-device smoothness remains unverified.
 - This release fixes setup-command pacing, the final setup road's camera
   move, zero-payout roll timing, and landscape clipping beneath the resource dock.
   Screen readers can read the dice values and total from the persistent header.
@@ -24,10 +25,18 @@ verification documents retain historical evidence, not current deployment status
   integration tests pass; Flutter analysis is clean. Local test cleanup left
   all six application table counts unchanged. Physical-device smoothness remains
   unverified.
-- Release verification is pending. Release requires the API, web client and Android client;
-  server pacing changed, so this is not a client-only deployment.
-- Current Render revisions were not reverified: the connector authorization expired
-  during review. Do not infer current hosted revisions from the historical notes below.
+- API and web both run `e8744ee`. API deploy `dep-daomtead0e5s73fjqkdg`
+  went live at 17:52:50 UTC; web deploy `dep-daomteh42hec738td5l0` went live
+  at 17:54:38 UTC with the build cache cleared. The live web bundle changed and
+  contains the new accessible dice-total text, absent from the previous bundle.
+- Final hosted preflight passed: readiness, protocol/rules compatibility, static
+  cache policy and rejection of unauthenticated sockets. Version latency was
+  74 ms median / 183 ms p95. No guest or game was created by this check.
+- All four saved games stayed paused with identical public/private/server/clock
+  hashes, revisions, turns, versions, move-log counts and outbox counts. This
+  includes multiplayer turn 19/version 703 and practice turns 31/108, 28/127,
+  and 5/32 (turn/version).
+- See [release verification](release-2026-09-21.md). No migration was applied.
 
 ## Historical roll feedback releases — 2026-09-20
 
@@ -101,15 +110,15 @@ smoothness remains to be checked. See [release verification](release-2026-09-20.
   History was audited for credentials first; only `.env.example` placeholders and
   deliberately fake test fixtures matched. Phases 1–6 are implemented and a solo
   practice mode against bots ships on top of them; Phase 7 acceptance remains partial.
-- Web: last revision recorded by this document was `fe0fc39`; current revision unverified.
+- Web: `e8744ee`, verified live on 2026-09-21.
   [dashboard](https://dashboard.render.com/static/srv-dajgfdnqj5pc73dhl33g).
-- API: last revision recorded by this document was `9f5a08b`; current revision unverified.
+- API: `e8744ee`, verified live on 2026-09-21.
   [dashboard](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330).
 - Android: signed build published to a rolling release. Downloads **without a
   GitHub account**, unlike a build artifact, which requires one whatever the
   repository's visibility:
   https://github.com/mgialousis/Catan/releases/download/android-latest/island-table.apk
-  Latest successful workflow: build 28 (`8838b52`, expected version code `1028`).
+  Latest successful workflow: build 29 (`e8744ee`, verified version code `1029`).
   Earlier package inspection: build 21 (`fe0fc39`, version code `1021`) verified
   anonymously at 55,243,232 bytes against the adjacent `SHA256SUMS`, with the
   existing release signing certificate, so an update install retains app data. Each build of

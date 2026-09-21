@@ -4,15 +4,17 @@ The [Android APK workflow](https://github.com/mgialousis/Catan/actions/workflows
 produces a signed release APK for the hosted game. It runs on changes to app/protocol/build files
 on `main`, or manually with **Run workflow**. It does not deploy Render services.
 
-Latest successful workflow: [build 28](https://github.com/mgialousis/Catan/actions/runs/35528690226),
-commit `8838b52`, confirmed during the 2026-09-21 review. It includes the opening
-camera changes, corner seats, resource dock and sequential roll/payout presentation.
-The workflow verifies signing; physical Android smoothness remains a separate check.
+Latest verified APK: [build 29](https://github.com/mgialousis/Catan/actions/runs/35619647214),
+commit `e8744ee`. It includes the 2026-09-21 UI fixes and regression coverage.
+Downloaded package verified as version code `1029`, signed with the existing
+release certificate (SHA-256 `4505ccee3645bf3ee5f61fa65f15217684311ca4f5d76b8c1dba3b3f2e6f8ee8`).
+APK SHA-256: `af36a770bce3718850b6237e207540fd38d12904abfcb8be22d87d7c3337a354`.
+The public release checksum matches the build artifact. Physical Android
+smoothness remains a separate check.
 
-The 2026-09-21 review fixes prepared for release are **not included in build 28**.
-They require a new APK plus API and web deployment. Render's current revisions
-were not reverified because connector authorization expired; Android workflow
-success does not imply either Render service was deployed.
+API and web also run `e8744ee`, verified after separate Render deployments.
+Android workflow success alone does not deploy either Render service. See
+[release verification](release-2026-09-21.md) for hosted checks and saved-game preservation.
 
 ## Download and install
 
@@ -27,7 +29,7 @@ success does not imply either Render service was deployed.
 Each successful main-branch build replaces the rolling release download. Individual
 workflow artifacts are also available for 30 days but require GitHub sign-in. The same
 release signing key is used for every build; version codes increase with the workflow
-run number (`1000 + run number`). Build 28 computes version code `1028`; the app label is `Catan`.
+run number (`1000 + run number`). Build 29 uses version code `1029`; the app label is `Catan`.
 Physical-device acceptance is still a separate Phase 7 check.
 
 ## Configuration
