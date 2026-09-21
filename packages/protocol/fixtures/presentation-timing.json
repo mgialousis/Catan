@@ -1,0 +1,5 @@
+[
+  { "cards": 0, "durationMs": 2800, "serverMarginMs": 700 },
+  { "cards": 1, "durationMs": 5200, "serverMarginMs": 700 },
+  { "cards": 3, "durationMs": 7520, "serverMarginMs": 700 }
+]

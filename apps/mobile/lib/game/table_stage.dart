@@ -11,14 +11,12 @@ import 'roll_presentation.dart';
 /// roll, its payout and the following roll never overlap.
 class _Scene {
   _Scene.roll(this.snapshot) : piece = null, focus = false;
-  _Scene.piece(this.snapshot, this.piece)
+  _Scene.piece(this.snapshot, this.piece, {required bool setup})
     // Your own piece only blinks: you just placed it, so moving the camera off
     // what you are doing would be in the way rather than informative. Setup is
     // the same -- it is a rapid round of placements with nothing else
     // happening, and a close-up of each one would be constant motion.
-    : focus =
-          piece!.playerId != snapshot.playerId &&
-          !snapshot.phase.startsWith('SETUP_');
+    : focus = piece!.playerId != snapshot.playerId && !setup;
   final GameSnapshot snapshot;
   final PlacedPiece? piece;
 
@@ -137,7 +135,15 @@ class _TableStageState extends State<TableStage>
       // Somebody else placing a piece is worth watching too, and the public
       // activity says what was built but not where, so the board is diffed.
       final piece = newPiece(old.snapshot, next);
-      if (piece != null) _enqueue(_Scene.piece(next, piece));
+      if (piece != null) {
+        _enqueue(
+          _Scene.piece(
+            next,
+            piece,
+            setup: old.snapshot.phase.startsWith('SETUP_'),
+          ),
+        );
+      }
     }
     // Activity can follow the snapshot in the next update. Accept it during
     // the dice/camera lead-in, then freeze the order once deliveries start.
@@ -216,9 +222,7 @@ class _TableStageState extends State<TableStage>
     if (!scene.isRoll) {
       return scene.focus && !_reducedMotion ? 2 * _cameraMs + _holdMs : _holdMs;
     }
-    return _reducedMotion || scene.snapshot.producingHexes.isEmpty
-        ? _diceMs
-        : _returnAt + _cameraMs;
+    return _reducedMotion || _flights.isEmpty ? _diceMs : _returnAt + _cameraMs;
   }
 
   /// A camera that puts a scene point in the middle of the viewer at [zoom]
@@ -297,7 +301,7 @@ class _TableStageState extends State<TableStage>
       _tickPiece(showing);
       return;
     }
-    if (_reducedMotion || _roll!.producingHexes.isEmpty) {
+    if (_reducedMotion || _flights.isEmpty) {
       if (_ms >= _diceMs) _finish();
       return;
     }
@@ -505,6 +509,9 @@ class _TableStageState extends State<TableStage>
         viewer.localToGlobal(viewer.size.center(Offset.zero)),
       );
       final dice = (roll.public['dice'] as List).cast<int>();
+      final panelWidth = math.min(200.0, viewer.size.width - 16);
+      // Two 1px borders, panel padding and the gap around each die.
+      final dieSize = ((panelWidth - 50) / 2).clamp(12.0, 48.0);
       final settling = !_reducedMotion && _ms < 520;
       final fade = _reducedMotion
           ? 1.0
@@ -517,7 +524,7 @@ class _TableStageState extends State<TableStage>
             child: FractionalTranslation(
               translation: const Offset(-.5, -.5),
               child: SizedBox(
-                width: math.min(200, viewer.size.width - 16),
+                width: panelWidth,
                 child: Opacity(
                   opacity: fade,
                   child: Semantics(
@@ -550,7 +557,7 @@ class _TableStageState extends State<TableStage>
                                             ? math.sin(_ms / 55 + i) * .16
                                             : 0,
                                         child: CustomPaint(
-                                          size: const Size.square(48),
+                                          size: Size.square(dieSize),
                                           painter: _DiePainter(
                                             settling
                                                 ? ((_ms ~/ 75 + i * 2) % 6) + 1
@@ -562,14 +569,17 @@ class _TableStageState extends State<TableStage>
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                settling
-                                    ? 'Rolling…'
-                                    : '${dice[0]} + ${dice[1]} = ${dice[0] + dice[1]}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 18,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  settling
+                                      ? 'Rolling…'
+                                      : '${dice[0]} + ${dice[1]} = ${dice[0] + dice[1]}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 18,
+                                  ),
                                 ),
                               ),
                             ],
@@ -618,7 +628,8 @@ class _TableStageState extends State<TableStage>
       label:
           'Turn ${s.public['turnNumber']}, '
           '${s.active ? 'your turn' : '${s.name(active)}\'s turn'}, '
-          '${words(s.phase)}',
+          '${words(s.phase)}'
+          '${dice == null ? '' : ', dice ${dice[0]} and ${dice[1]}, total ${(dice[0] as int) + (dice[1] as int)}'}',
       child: ExcludeSemantics(
         child: Row(
           children: [

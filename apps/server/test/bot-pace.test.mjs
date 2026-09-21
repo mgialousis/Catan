@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { botPace, botReadyAt, BOT_BASE_PACE_MS } from '../dist/bot-runner.js';
+import { readFileSync } from 'node:fs';
+import { botPace, botReadyAt, botReadyFromHistory, BOT_BASE_PACE_MS } from '../dist/bot-runner.js';
 
 // Animation lengths as apps/mobile/lib/game/table_stage.dart defines them, and
 // the slack the pacing is required to keep on top of each.
@@ -8,7 +9,8 @@ const MARGIN = 700;
 const rollAnimationMs = cards =>
   cards === 0 ? 2800 : 2800 + 600 + cards * 1000 + (cards - 1) * 160 + 200 + 600;
 const pieceAnimationMs = 2 * 600 + 1300;
-import { projectEffects } from '../../../packages/game-engine/dist/index.js';
+import { projectEffects, projectPlayer, legalCommands } from '../../../packages/game-engine/dist/index.js';
+import { newGame, act } from '../../../packages/game-engine/test/helpers.mjs';
 
 // Built through the same projection the server persists with, so this cannot
 // drift back to the engine's own field names: `action` becomes `type` there,
@@ -104,24 +106,57 @@ test('an old move no longer holds the table', () => {
   assert.equal(botReadyAt([], 90_000), 90_000 + BOT_BASE_PACE_MS);
 });
 
-test('opening placements wait only for the blink, not a close-up', () => {
-  for (const phase of ['SETUP_SETTLEMENT', 'SETUP_ROAD']) {
-    for (const type of ['BUILD_ROAD', 'BUILD_SETTLEMENT']) {
-      assert.equal(botPace(type, [], phase), 1300 + MARGIN);
-      assert.ok(
-        botPace(type, [], phase) < botPace(type),
-        `${type} in ${phase} should not wait out a camera move`,
-      );
-    }
+test('opening placement commands wait for the blink, including the final road', () => {
+  let { state } = newGame();
+  let placements = 0;
+  while (state.serverState.setup) {
+    const actor = state.publicState.activePlayerId;
+    const [move] = legalCommands(
+      { publicState: state.publicState, hand: projectPlayer(state, actor) },
+      { pendingSetupVertexId: state.serverState.setup.pendingVertexId, developmentCardsRemaining: state.serverState.developmentDeck.length },
+    );
+    assert.ok(move, 'engine offers a setup placement');
+    state = act(state, move.type, move.payload).state;
+    assert.equal(botPace(move.type), 1300 + MARGIN, `${move.type} entering ${state.publicState.phase}`);
+    assert.ok(++placements <= 16);
   }
-  // Once the opening is over the close-up is back.
-  assert.equal(botPace('BUILD_CITY', [], 'ACTION'), pieceAnimationMs + MARGIN);
-  assert.equal(botPace('BUILD_CITY', []), pieceAnimationMs + MARGIN);
+  assert.equal(placements, 16);
+  assert.equal(state.publicState.phase, 'AWAIT_ROLL');
+  assert.equal(botPace('BUILD_CITY'), pieceAnimationMs + MARGIN);
 });
 
-test('a payout is unaffected by the phase', () => {
-  assert.equal(
-    botPace('ROLL_DICE', payout(3), 'SETUP_ROAD'),
-    botPace('ROLL_DICE', payout(3)),
-  );
+test('server release matches the timing scenarios exercised by Flutter', () => {
+  const scenarios = JSON.parse(readFileSync(new URL('../../../packages/protocol/fixtures/presentation-timing.json', import.meta.url)));
+  for (const { cards, durationMs, serverMarginMs } of scenarios) {
+    assert.equal(botPace('ROLL_DICE', payout(cards)), durationMs + serverMarginMs);
+  }
+});
+
+test('rapid non-visual moves cannot evict an unfinished payout', async () => {
+  const rolledAt = 100_000;
+  const moves = [
+    { sequence: 1, commandType: 'ROLL_DICE', activity: payout(8), atMs: rolledAt },
+    ...Array.from({ length: 40 }, (_, i) => ({
+      sequence: i + 2, commandType: i % 2 ? 'WITHDRAW_TRADE' : 'PROPOSE_TRADE',
+      activity: [], atMs: rolledAt + 100 + i * 100,
+    })),
+    { sequence: 42, commandType: 'END_TURN', activity: [], atMs: rolledAt + 4200 },
+  ].reverse();
+  const cursors = [];
+  const ready = await botReadyFromHistory(async before => {
+    cursors.push(before);
+    return moves.filter(move => move.sequence < before).slice(0, 32);
+  }, 42, rolledAt + 4200, rolledAt + 5100);
+  assert.equal(ready, rolledAt + botPace('ROLL_DICE', payout(8)));
+  assert.ok(cursors.length >= 2, 'reads beyond the first page');
+});
+
+test('history scanning stops once even the longest payout has expired', async () => {
+  let reads = 0;
+  const ready = await botReadyFromHistory(async () => {
+    reads++;
+    return Array.from({ length: 32 }, (_, i) => ({ sequence: 99 - i, commandType: 'ROLL_DICE', activity: payout(95), atMs: 0 }));
+  }, 99, 0, 120_000);
+  assert.equal(reads, 1);
+  assert.ok(ready < 120_000);
 });

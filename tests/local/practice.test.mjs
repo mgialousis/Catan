@@ -8,6 +8,7 @@ import { createApp } from '../../apps/server/dist/app.js';
 import { loadConfig } from '../../apps/server/dist/config.js';
 import { isValid } from '../../packages/protocol/dist/index.js';
 import { assertInvariants, chooseCommand, projectPlayer, seedFrom } from '../../packages/game-engine/dist/index.js';
+import { botPace } from '../../apps/server/dist/bot-runner.js';
 
 process.loadEnvFile('.env');
 const local = JSON.parse(readFileSync('.local/test-env.json', 'utf8'));
@@ -154,5 +155,21 @@ test('a solo practice game seats bots and they play it themselves', async t => {
     assert.ok(rows.some(r => r.kind === 'BOT'), 'bot moves are attributed, not anonymous');
     const receipts = (await admin.query("SELECT count(*)::int n FROM app.command_receipts WHERE room_id=$1 AND actor_key='system:bot'", [roomId])).rows[0].n;
     assert.ok(receipts > 0, 'each automated move leaves a durable receipt, so a retry cannot repeat it');
+  });
+
+  await t.test('the database-backed runner waits for opening presentations', async () => {
+    const moves = (await admin.query(`SELECT m.command_type, m.public_activity, m.created_at, p.kind
+      FROM app.move_logs m LEFT JOIN app.players p ON p.id=m.actor_player_id
+      WHERE m.room_id=$1 ORDER BY m.sequence`, [roomId])).rows;
+    let checked = 0;
+    for (let i = 1; i < moves.length; i++) {
+      const previous = moves[i - 1], next = moves[i];
+      if (next.kind !== 'BOT' || !previous.command_type.startsWith('PLACE_SETUP_')) continue;
+      const elapsed = next.created_at.getTime() - previous.created_at.getTime();
+      assert.ok(elapsed >= botPace(previous.command_type) - 30,
+        `${previous.command_type} only waited ${elapsed}ms before the next bot`);
+      checked++;
+    }
+    assert.ok(checked >= 2, 'observed consecutive opening moves through the real runner');
   });
 });

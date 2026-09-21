@@ -1,9 +1,10 @@
 import { advanceClock, systemId } from './game-clock.js';
 import {
-  applyCommand, chooseCommand, projectPlayer, seedFrom,
+  applyCommand, chooseCommand, projectPlayer, seedFrom, BASE_INVENTORY,
   type BotDifficulty, type CanonicalState, type RandomSource, type Transition,
 } from '@island/game-engine';
 import type { Command } from '@island/protocol/contracts';
+import { RESOURCE_TYPES } from '@island/protocol';
 
 export interface BotJob {
   roomId: string; phaseId: string; version: number; playerId: string; commandId: string;
@@ -123,23 +124,19 @@ export interface PacedMove { commandType: string; activity: readonly unknown[]; 
  * table busy for as long as its own presentation lasts, whoever made it, and
  * the bot waits for the last of them.
  */
-export function botReadyAt(recent: readonly PacedMove[], updatedAtMs: number, phase?: string): number {
-  if (!recent.length) return updatedAtMs + BOT_BASE_PACE_MS;
-  let ready = updatedAtMs;
-  for (const move of recent) ready = Math.max(ready, move.atMs + botPace(move.commandType, move.activity, phase));
+export function botReadyAt(recent: readonly PacedMove[], updatedAtMs: number): number {
+  let ready = updatedAtMs + BOT_BASE_PACE_MS;
+  for (const move of recent) ready = Math.max(ready, move.atMs + botPace(move.commandType, move.activity));
   return ready;
 }
 
-export function botPace(commandType: string | null, activity: readonly unknown[] = [], phase?: string): number {
+export function botPace(commandType: string | null, activity: readonly unknown[] = []): number {
   if (commandType === null) return BOT_BASE_PACE_MS;
-  if (BUILDS.includes(commandType)) {
-    // Opening placements come one after another with nothing else happening, so
-    // the client blinks them where they stand instead of moving the camera to
-    // each. Waiting out a close-up nobody is being shown would only make the
-    // opening drag.
-    const setup = phase?.startsWith('SETUP_') ?? false;
-    return (setup ? HOLD_MS : 2 * CAMERA_MS + HOLD_MS) + PRESENTATION_MARGIN_MS;
+  // Command identity survives the final setup road's transition to AWAIT_ROLL.
+  if (commandType === 'PLACE_SETUP_SETTLEMENT' || commandType === 'PLACE_SETUP_ROAD') {
+    return HOLD_MS + PRESENTATION_MARGIN_MS;
   }
+  if (BUILDS.includes(commandType)) return 2 * CAMERA_MS + HOLD_MS + PRESENTATION_MARGIN_MS;
   if (commandType !== 'ROLL_DICE') return BOT_BASE_PACE_MS;
   // One icon flies per card delivered, so the payout's length is the number of
   // cards the roll actually paid out, after bank shortages and the robber.
@@ -155,4 +152,28 @@ export function botPace(commandType: string | null, activity: readonly unknown[]
   }
   if (cards === 0) return DICE_MS + PRESENTATION_MARGIN_MS;
   return DICE_MS + CAMERA_MS + cards * FLIGHT_MS + (cards - 1) * GAP_MS + PAD_MS + CAMERA_MS + PRESENTATION_MARGIN_MS;
+}
+
+// Even a hypothetical payout of every card in the finite bank cannot outlast
+// this window. Scan history by the existing (room_id, sequence) index until
+// reaching it; a burst of trades must not push a roll out of a fixed row limit.
+const MAX_PRESENTATION_MS = botPace('ROLL_DICE', [{
+  type: 'RESOURCES_COLLECTED',
+  resources: { total: BASE_INVENTORY.resourceCardsPerType * RESOURCE_TYPES.length },
+}]);
+export interface SequencedPacedMove extends PacedMove { sequence: number }
+export async function botReadyFromHistory(
+  fetchBefore: (sequence: number, limit: number) => Promise<readonly SequencedPacedMove[]>,
+  version: number, updatedAtMs: number, nowMs: number,
+): Promise<number> {
+  let cursor = version + 1, ready = updatedAtMs + BOT_BASE_PACE_MS;
+  const cutoff = nowMs - MAX_PRESENTATION_MS;
+  while (true) {
+    const page = await fetchBefore(cursor, 32);
+    if (!page.length) return ready;
+    ready = Math.max(ready, botReadyAt(page, updatedAtMs));
+    const oldest = page[page.length - 1]!;
+    if (page.length < 32 || oldest.atMs <= cutoff) return ready;
+    cursor = oldest.sequence;
+  }
 }

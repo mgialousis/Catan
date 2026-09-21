@@ -539,15 +539,15 @@ class _IslandBoardState extends State<IslandBoard>
         },
       );
       return Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(children: header),
-          // Flexible only when the parent bounds our height; a scroll view leaves it unbounded.
           // Flexible only when the parent bounds our height; a scroll view
           // leaves it unbounded and the island sizes itself.
           if (outer.maxHeight.isFinite) Flexible(child: water) else water,
           // On a short screen the island needs that height more than the hint
           // does; the gestures are discoverable by trying them.
-          if (outer.maxWidth >= 340)
+          if (outer.maxWidth >= 340 && outer.maxHeight >= 280)
             const Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text(

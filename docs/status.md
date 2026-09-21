@@ -1,10 +1,35 @@
 # Current project status
 
-Updated 2026-09-20 (Europe/Zurich), after the roll-feedback release, its two
-reported-defect fixes, and the presentation/layout work that followed. Use this file for handoff; dated verification documents retain
-historical evidence and are not a statement of the current release.
+Updated 2026-09-21 (Europe/Zurich). Use this file for handoff; dated
+verification documents retain historical evidence, not current deployment status.
 
-## Roll feedback release — 2026-09-20
+## Current handoff — review fixes prepared for release
+
+- Reviewed baseline: `8838b52`. GitHub Android build **28** completed successfully
+  for that commit: https://github.com/mgialousis/Catan/actions/runs/35528690226.
+  This confirms the workflow result; it does not constitute a physical-device test.
+- This release fixes setup-command pacing, the final setup road's camera
+  move, zero-payout roll timing, and landscape clipping beneath the resource dock.
+  Screen readers can read the dice values and total from the persistent header.
+- Bot pacing scans indexed history pages through the maximum possible presentation
+  window instead of forgetting a roll after six newer moves. There is no schema
+  migration and no new persistent write for pacing.
+- The map uses the measured height left below notices and the countdown. If large
+  text and a long notice leave too little space for a usable board, the page scrolls
+  instead of overflowing or shrinking the island to zero.
+- New regression coverage exercises engine-generated setup commands, the setup-to-
+  play transition, timed/paused landscape layouts, accessible dice, and shared
+  server/client payout timings. Local database tests also check actual bot spacing.
+- Validation: 378 Flutter tests, 267 server/engine tests and 70 local database
+  integration tests pass; Flutter analysis is clean. Local test cleanup left
+  all six application table counts unchanged. Physical-device smoothness remains
+  unverified.
+- Release verification is pending. Release requires the API, web client and Android client;
+  server pacing changed, so this is not a client-only deployment.
+- Current Render revisions were not reverified: the connector authorization expired
+  during review. Do not infer current hosted revisions from the historical notes below.
+
+## Historical roll feedback releases — 2026-09-20
 
 Release `812d023` adds compact player summaries above the island, a persistent
 illustrated resource bar, and a roll presentation: centered dice and total,
@@ -23,7 +48,7 @@ Follow-up `2326130` centres the dice on the map viewport rather than at a fixed
 offset, so they no longer drift with larger text; restores `=` in the total;
 holds the dice a second longer; and delivers payouts strictly one at a time.
 It is client-only, so the API still runs `812d023` and was not restarted — the
-engine effect the animations consume already shipped there. Live now: web and
+engine effect the animations consume already shipped there. At that release: web and
 signed Android **build 18** on `2326130`, API on `812d023`. Verify with
 `git diff --name-only <deployed>..HEAD -- apps/server packages/ supabase/`
 before assuming the API needs a deploy; here it did not, and a practice game
@@ -76,15 +101,16 @@ smoothness remains to be checked. See [release verification](release-2026-09-20.
   History was audited for credentials first; only `.env.example` placeholders and
   deliberately fake test fixtures matched. Phases 1–6 are implemented and a solo
   practice mode against bots ships on top of them; Phase 7 acceptance remains partial.
-- Web: `fe0fc39`,
-  [live](https://dashboard.render.com/static/srv-dajgfdnqj5pc73dhl33g).
-- API: `9f5a08b`,
-  [live](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330).
+- Web: last revision recorded by this document was `fe0fc39`; current revision unverified.
+  [dashboard](https://dashboard.render.com/static/srv-dajgfdnqj5pc73dhl33g).
+- API: last revision recorded by this document was `9f5a08b`; current revision unverified.
+  [dashboard](https://dashboard.render.com/web/srv-dajgfdnqj5pc73dhl330).
 - Android: signed build published to a rolling release. Downloads **without a
   GitHub account**, unlike a build artifact, which requires one whatever the
   repository's visibility:
   https://github.com/mgialousis/Catan/releases/download/android-latest/island-table.apk
-  Build 21 (`fe0fc39`, version code `1021` read out of the package) verified
+  Latest successful workflow: build 28 (`8838b52`, expected version code `1028`).
+  Earlier package inspection: build 21 (`fe0fc39`, version code `1021`) verified
   anonymously at 55,243,232 bytes against the adjacent `SHA256SUMS`, with the
   existing release signing certificate, so an update install retains app data. Each build of
   `main` replaces both files; the URL does not change.
@@ -109,7 +135,8 @@ Solo practice ships end to end and is in real use on the hosted stack.
 - The runner takes the same path a person's command takes — fence, per-command
   advisory lock, receipt, room row, game row. A job id carries room, phase and
   version, so a retry after a crash replays the recorded move rather than inventing
-  a second one. Moves are paced about a second apart.
+  a second one. Moves are paced to allow dice, payouts and placement feedback to finish;
+  actions without a presentation retain a 900 ms base delay.
 - A practice room holds no `active_slot`, so it never competes with the single live
   multiplayer game.
 - Hosted evidence: 6 practice rooms, **3 played to completion**, 18 automated seats

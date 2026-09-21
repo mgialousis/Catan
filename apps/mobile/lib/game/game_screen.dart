@@ -322,123 +322,133 @@ class _GameScreenState extends ConsumerState<GameScreen>
     );
   }
 
-  Widget _table(GameView view, GameSnapshot snapshot) => LayoutBuilder(
-    builder: (context, constraints) {
-      // Everything reads top to bottom: the map owns the full width and the
-      // actions follow underneath it, in both orientations. Putting the panels
-      // beside the map only ever shrank the thing people are looking at.
-      Widget inset(Widget child) => Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 620),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: child,
+  Widget _table(GameView view, GameSnapshot snapshot) {
+    // Everything reads top to bottom: the map owns the full width and the
+    // actions follow underneath it, in both orientations. Putting the panels
+    // beside the map only ever shrank the thing people are looking at.
+    Widget inset(Widget child) => Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: child,
+        ),
+      ),
+    );
+    final board = TableStage(
+      activity: view.activity,
+      connected: view.connected,
+      onPlayer: (player) => _points(snapshot, player),
+      menu: snapshot.complete ? null : _tableMenu(view, snapshot),
+      snapshot: snapshot,
+      targets: view.selection == null || view.locked
+          ? const {}
+          : snapshot.targets(
+              view.selection!,
+              pendingSetupVertex: view.setupVertex,
+            ),
+      selected: view.target,
+      onTarget: _controller.target,
+    );
+    return CustomScrollView(
+      key: const Key('game-scroll'),
+      // No side padding: the map runs edge to edge and every other panel
+      // insets itself, so the board is the widest thing on the screen.
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.only(top: 20),
+          sliver: SliverList.list(
+            children: [
+              // The turn, phase and roll now share the board's own header line, so
+              // there is no panel of them above the map.
+              if (view.message != null)
+                inset(_banner(view.message!, Icons.info_outline)),
+              if (snapshot.vacantSeats.isNotEmpty)
+                inset(_vacancies(view, snapshot)),
+              if (snapshot.paused && snapshot.vacantSeats.isEmpty)
+                inset(
+                  _banner(
+                    (snapshot.public['pauseReasons'] as List).any(
+                          (r) => r != 'DISCONNECTED',
+                        )
+                        ? 'Game saved and paused. The host can resume when required players are online.'
+                        : 'Waiting for a required player to reconnect. Your remaining time is saved.',
+                    Icons.pause_circle_outline,
+                  ),
+                ),
+              if (!view.connected)
+                inset(_banner('Reconnecting to your table…', Icons.wifi_off)),
+              if (view.pending != null) inset(_pending(view)),
+              if (!snapshot.paused &&
+                  (snapshot.public['turnDeadline'] != null ||
+                      (snapshot.public['discardDeadlines']
+                              as Map)[snapshot.playerId] !=
+                          null))
+                inset(
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: GameCountdown(
+                      serverTime:
+                          view.serverTime ??
+                          snapshot.json['serverTime'] as String,
+                      deadline:
+                          ((snapshot.public['discardDeadlines']
+                                      as Map)[snapshot.playerId] ??
+                                  snapshot.public['turnDeadline'])
+                              as String,
+                      discard: snapshot.phase == 'DISCARD_REQUIRED',
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+            ],
           ),
         ),
-      );
-      final board = TableStage(
-        // The island is bounded by the height left after its own header row,
-        // so all of it stays on screen; the sea fills any width left over.
-        fitHeight: constraints.maxHeight.isFinite
-            ? math.max(180, constraints.maxHeight - 76)
-            : null,
-        activity: view.activity,
-        connected: view.connected,
-        onPlayer: (player) => _points(snapshot, player),
-        menu: snapshot.complete ? null : _tableMenu(view, snapshot),
-        snapshot: snapshot,
-        targets: view.selection == null || view.locked
-            ? const {}
-            : snapshot.targets(
-                view.selection!,
-                pendingSetupVertex: view.setupVertex,
-              ),
-        selected: view.target,
-        onTarget: _controller.target,
-      );
-      return ListView(
-        key: const Key('game-scroll'),
-        // No side padding: the map runs edge to edge and every other panel
-        // insets itself, so the board is the widest thing on the screen.
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        children: [
-          // The turn, phase and roll now share the board's own header line, so
-          // there is no panel of them above the map.
-          if (view.message != null)
-            inset(_banner(view.message!, Icons.info_outline)),
-          if (snapshot.vacantSeats.isNotEmpty)
-            inset(_vacancies(view, snapshot)),
-          if (snapshot.paused && snapshot.vacantSeats.isEmpty)
-            inset(
-              _banner(
-                (snapshot.public['pauseReasons'] as List).any(
-                      (r) => r != 'DISCONNECTED',
-                    )
-                    ? 'Game saved and paused. The host can resume when required players are online.'
-                    : 'Waiting for a required player to reconnect. Your remaining time is saved.',
-                Icons.pause_circle_outline,
-              ),
-            ),
-          if (!view.connected)
-            inset(_banner('Reconnecting to your table…', Icons.wifi_off)),
-          if (view.pending != null) inset(_pending(view)),
-          if (!snapshot.paused &&
-              (snapshot.public['turnDeadline'] != null ||
-                  (snapshot.public['discardDeadlines']
-                          as Map)[snapshot.playerId] !=
-                      null))
-            inset(
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: GameCountdown(
-                  serverTime:
-                      view.serverTime ?? snapshot.json['serverTime'] as String,
-                  deadline:
-                      ((snapshot.public['discardDeadlines']
-                                  as Map)[snapshot.playerId] ??
-                              snapshot.public['turnDeadline'])
-                          as String,
-                  discard: snapshot.phase == 'DISCARD_REQUIRED',
+        // Use the measured extent of notices/countdown, not an estimated
+        // header height. precedingScrollExtent is independent of scrolling,
+        // so panning down the page does not resize the island. Keeping this
+        // sliver stable also preserves a roll when the sending notice goes.
+        SliverLayoutBuilder(
+          key: const Key('table-stage'),
+          builder: (context, sliver) => SliverToBoxAdapter(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 820,
+                  // If large text/notices occupy nearly the whole viewport,
+                  // keep a usable board and let the page scroll instead of
+                  // collapsing its header or island to zero height.
+                  maxHeight: math.max(
+                    120 + MediaQuery.textScalerOf(context).scale(40),
+                    sliver.viewportMainAxisExtent -
+                        sliver.precedingScrollExtent,
+                  ),
                 ),
+                child: board,
               ),
             ),
-          const SizedBox(height: 12),
-          // The whole island has to be on screen without scrolling, so the map
-          // is bounded by the height left after its own header row, and scaled
-          // down to fit when the screen is short. On a tall phone the width is
-          // what binds and nothing is given up; in landscape the map gets
-          // smaller rather than running off the bottom.
-          //
-          // The corner seats survive this: a badge drops its name before it is
-          // given up, down to a 300-pixel board.
-          //
-          // The key belongs on the list child itself. The panels above it come
-          // and go -- a sending notice, banners, the countdown -- and unkeyed
-          // list children are matched by position, so every one of those shifts
-          // would otherwise rebuild this subtree and lose the roll it is
-          // presenting. Your own roll always arrives with a pending notice,
-          // which is why it was the one that never animated.
-          Center(
-            key: const Key('table-stage'),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 820),
-              child: board,
-            ),
           ),
-          const SizedBox(height: 16),
-          inset(
-            snapshot.complete ? _result(snapshot) : _prompt(view, snapshot),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.only(bottom: 20),
+          sliver: SliverList.list(
+            children: [
+              const SizedBox(height: 16),
+              inset(
+                snapshot.complete ? _result(snapshot) : _prompt(view, snapshot),
+              ),
+              const SizedBox(height: 16),
+              inset(_players(snapshot)),
+              const SizedBox(height: 16),
+              inset(_hand(view, snapshot)),
+              const SizedBox(height: 16),
+              inset(_activity(view, snapshot)),
+            ],
           ),
-          const SizedBox(height: 16),
-          inset(_players(snapshot)),
-          const SizedBox(height: 16),
-          inset(_hand(view, snapshot)),
-          const SizedBox(height: 16),
-          inset(_activity(view, snapshot)),
-        ],
-      );
-    },
-  );
+        ),
+      ],
+    );
+  }
 
   Widget _waiting(GameView view) => Center(
     child: Column(

@@ -6,13 +6,7 @@ import { applyCommand, createGame, assertInvariants, projectGame, projectEffects
 import { Database } from './database.js';
 import type { Rooms } from './rooms.js';
 import { canonical, hash, LobbyError } from './lobby-policy.js';
-import { botJobs, botMove, botDifficulty, botPace, botReadyAt, matchesBotJob, BOT_BASE_PACE_MS, type BotJob } from './bot-runner.js';
-
-/**
- * How long an automated seat waits before moving. Long enough that a practice
- * game reads like people playing rather than the board resolving itself, short
- * enough that a turn of bots does not feel like waiting for a server.
- */
+import { botJobs, botMove, botDifficulty, botReadyFromHistory, matchesBotJob, BOT_BASE_PACE_MS, type BotJob } from './bot-runner.js';
 
 /** Seats whose player has walked out and which nobody has filled yet. */
 function vacantSeats(state: CanonicalState): string[] {
@@ -375,8 +369,10 @@ export class Games {
       // than the board resolving itself the instant a turn passes, and so the
       // client has finished presenting the previous move: a roll's payout is
       // never cut short by the next roll.
-      const recent = (await db.query('SELECT command_type,public_activity,created_at FROM app.move_logs WHERE room_id=$1 ORDER BY sequence DESC LIMIT 6', [job.roomId])).rows;
-      const readyAt = botReadyAt(recent.map(move => ({ commandType: move.command_type, activity: move.public_activity, atMs: move.created_at.getTime() })), row.updated_at.getTime(), state.publicState.phase);
+      const readyAt = await botReadyFromHistory(async (before, limit) => {
+        const recent = (await db.query('SELECT sequence,command_type,public_activity,created_at FROM app.move_logs WHERE room_id=$1 AND sequence<$2 ORDER BY sequence DESC LIMIT $3', [job.roomId, before, limit])).rows;
+        return recent.map(move => ({ sequence: move.sequence, commandType: move.command_type, activity: move.public_activity, atMs: move.created_at.getTime() }));
+      }, state.version, row.updated_at.getTime(), Date.parse(now));
       if (Date.parse(now) < readyAt) return 'EARLY' as const;
       const move = botMove(state, job, botDifficulty(room.settings), now, engineContext().random);
       if (!move) return 'STALE' as const;

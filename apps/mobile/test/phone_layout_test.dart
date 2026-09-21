@@ -53,13 +53,13 @@ void main() {
       );
       expect(
         sea.bottom,
-        lessThanOrEqualTo(size.height),
+        lessThanOrEqualTo(t.getRect(find.byType(ResourceDock)).top),
         reason: '$name: the board card runs off the bottom',
       );
       // The whole island is visible without scrolling.
       expect(
         map.bottom,
-        lessThanOrEqualTo(size.height),
+        lessThanOrEqualTo(t.getRect(find.byType(ResourceDock)).top),
         reason:
             '$name: the island runs off the bottom (map $map, screen $size)',
       );

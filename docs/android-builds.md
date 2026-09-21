@@ -4,10 +4,15 @@ The [Android APK workflow](https://github.com/mgialousis/Catan/actions/workflows
 produces a signed release APK for the hosted game. It runs on changes to app/protocol/build files
 on `main`, or manually with **Run workflow**. It does not deploy Render services.
 
-Latest verified client: [build 18](https://github.com/mgialousis/Catan/actions/runs/35504163157),
-commit `812d023`, signed release APK, successful. It includes the player summaries,
-persistent resource bar, dice presentation, camera focus and resource collection
-animation. Both hosted services run the same code. See [release verification](release-2026-09-20.md).
+Latest successful workflow: [build 28](https://github.com/mgialousis/Catan/actions/runs/35528690226),
+commit `8838b52`, confirmed during the 2026-09-21 review. It includes the opening
+camera changes, corner seats, resource dock and sequential roll/payout presentation.
+The workflow verifies signing; physical Android smoothness remains a separate check.
+
+The 2026-09-21 review fixes prepared for release are **not included in build 28**.
+They require a new APK plus API and web deployment. Render's current revisions
+were not reverified because connector authorization expired; Android workflow
+success does not imply either Render service was deployed.
 
 ## Download and install
 
@@ -22,7 +27,7 @@ animation. Both hosted services run the same code. See [release verification](re
 Each successful main-branch build replaces the rolling release download. Individual
 workflow artifacts are also available for 30 days but require GitHub sign-in. The same
 release signing key is used for every build; version codes increase with the workflow
-run number (`1000 + run number`). Build 18 uses version code `1018` and app label `Catan`.
+run number (`1000 + run number`). Build 28 computes version code `1028`; the app label is `Catan`.
 Physical-device acceptance is still a separate Phase 7 check.
 
 ## Configuration
@@ -33,7 +38,7 @@ and APK signature verification must pass before an artifact is uploaded.
 The APK command keeps Flutter's pub/tooling refresh enabled so release plugin registration
 excludes `integration_test` after running tests. A final check rejects any dependency lockfile change.
 
-Verified build: [run 34841315094](https://github.com/mgialousis/Catan/actions/runs/34841315094)
+Historical package inspection: [run 34841315094](https://github.com/mgialousis/Catan/actions/runs/34841315094)
 from `d1e3505`, with [APK artifact](https://github.com/mgialousis/Catan/actions/runs/34841315094/artifacts/10346371561).
 It produced version `0.1.0` / code `1002`, package `dev.islandtable.island_table`, size
 54,229,885 bytes. The downloaded APK's checksum matched, its signature matched the existing
