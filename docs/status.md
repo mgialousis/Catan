@@ -5,9 +5,21 @@ verification documents retain historical evidence, not current deployment status
 
 ## Current handoff — one damaged game no longer stops the service
 
-- **Live now:** API `97d7560` (deploy `dep-dasmm0n6gc8s73cv5sgg`, 19:15:30 UTC);
-  web `139fd86`; Android from `139fd86` (run 36341540010). The two server-only
+- **Live now:** API `1f548f8` (deploy `dep-dasn0lfpn0mc7394lmi0`, 19:38:02 UTC);
+  web `139fd86`; Android from `139fd86` (run 36341540010). The server-only
   commits below needed no web deploy and trigger no APK build.
+- `1f548f8` stops the tick locking every live game. It used to lock all
+  unfinished rooms in one statement and validate each before skipping the
+  paused ones, so a move in one game could wait behind work on every other.
+  Now it selects in SQL only games whose presence can change and visits each
+  in its own transaction with `SKIP LOCKED`; a game paused for a host decision
+  is neither locked nor parsed. Saved games are validated once per Postgres row
+  version (`xmin`), so an unchanged game is not re-validated on every pass, and
+  any write — a manual repair included — forces a fresh check. Measured locally
+  against the previous code: 2 re-validations per idle pass per game before,
+  none after; a move held behind another game 2,753 ms before, 16–35 ms after.
+  Bot and timer runners still wait for a locked room, per PLAN §1.5. In
+  production the new pass first runs when a game is next played.
 - `fcd9106` isolates a saved game that fails validation instead of stopping the
   service. Previously one such row stopped every game's timers, bots and presence,
   failed readiness, refused every lobby action, and failed startup — so every
