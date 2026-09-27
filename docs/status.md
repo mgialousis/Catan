@@ -3,10 +3,41 @@
 Updated 2026-09-27 (Europe/Zurich). Use this file for handoff; dated
 verification documents retain historical evidence, not current deployment status.
 
-## Current handoff — acceptance follow-up and Hard mode prepared
+## Current handoff — one damaged game no longer stops the service
 
-- Hosted release remains `e8744ee` / Android build **29**. The AI changes below
-  are local work and have not been committed, deployed or built into a new APK.
+- **Live now:** API `97d7560` (deploy `dep-dasmm0n6gc8s73cv5sgg`, 19:15:30 UTC);
+  web `139fd86`; Android from `139fd86` (run 36341540010). The two server-only
+  commits below needed no web deploy and trigger no APK build.
+- `fcd9106` isolates a saved game that fails validation instead of stopping the
+  service. Previously one such row stopped every game's timers, bots and presence,
+  failed readiness, refused every lobby action, and failed startup — so every
+  restart crash-looped on it. Now that game is left untouched and isolated, the
+  rest carry on, boot recovery continues past it, and it is re-checked every
+  minute so a repaired row returns without a restart. Room resubscription,
+  outbox delivery and token refresh are isolated per room too.
+- Per-person connection limit (30/min, after token verification) added, so one
+  client's reconnect loop cannot lock anyone else out.
+- **Ingress measured, `TRUSTED_PROXY_HOPS=1`** (`97d7560`). An ingress probe logs
+  forwarding-chain shapes without addresses. Render's proxy reaches the app over
+  loopback and appends the client to `X-Forwarded-For`; both `cf-connecting-ip`
+  and `true-client-ip` sit at the last entry. A forged `X-Forwarded-For` stays in
+  front of it, so one hop selects the real client. Zero keyed every player to the
+  loopback address, so each per-IP limit was one budget shared by everybody.
+  After the change the probe reports `configured 1` with no warning.
+- **A push that changes `render.yaml` redeploys the API** through Blueprint sync
+  (`trigger: blueprint_sync`), despite automatic deploys being off. Observed on
+  `97d7560`. Check for active games before pushing blueprint changes.
+- Evidence: 283 engine/server/protocol and 81 local integration tests pass,
+  cleanup unchanged. The new isolation test fails three ways against the previous
+  code — a healthy game frozen at version 0, and `Lobby initialization failed` on
+  restart. Across three production restarts all four paused games kept identical
+  versions, state hashes and move-log counts. Preflight passed: 114 ms median.
+
+## Previous handoff — acceptance follow-up and Hard mode (`139fd86`)
+
+- Committed as `139fd86` and deployed to web and API on 27 September; Android run
+  36341540010 succeeded. (This section was written before that happened and
+  originally described the work as local only.)
 - Added distinct Hard bots, public-information planning and a responsive skill
   selector. Medium port valuation and unfavorable-trade decisions are corrected.
 - A 24-game seat-rotated sample finished every game; Hard won 14 against three
@@ -217,7 +248,7 @@ or never update their advisory `last_seen_at` timestamp.
 | --- | --- |
 | P7.1 Accounts | Services/regions verified; billing, payment-method and remaining quota settings still need account evidence. |
 | P7.2 Database | Hosted migration/permissions/TLS and history reconciliation complete. |
-| P7.3 API | Live API and saved-paused-game replacement evidence exist. Active synthetic restart/fencing and measured ingress remain open; `TRUSTED_PROXY_HOPS=0` must not be guessed. |
+| P7.3 API | Live API and saved-paused-game replacement evidence exist. Ingress measured 27 September: `TRUSTED_PROXY_HOPS=1`, confirmed spoof-resistant with a forged header. Active synthetic restart/fencing remains open. |
 | P7.4 Web | Live, real configuration, entry-point cache policy checked. |
 | P7.5 Native | Signed Android APK published to a release that downloads without an account, verified anonymously against its checksum. Exact device/build acceptance, iOS provisioning and physical iPhone install remain open. |
 | P7.6–P7.7 Matches | Three hosted practice games ran to completion with 708 automated moves, exercising the rules end to end without needing to assemble players. That is not the gate: mixed native/web privacy and reconnect cases, and complete timed and untimed **human** matches on separate networks, remain open. |

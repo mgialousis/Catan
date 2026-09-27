@@ -24,9 +24,13 @@ crash-loops the API in either order. Check
 redeploying the API: a client-only change needs only the static site, and an API
 deploy interrupts whatever game is running.
 
-Render auto-deploy is deliberately **off** (`autoDeployTrigger: "off"` in `render.yaml`), so a push never
-interrupts a game in progress; deploys are explicit. Free instances sleep after 15 minutes idle, so the
-first request takes about a minute. Hosted operator values live in ignored `.local/operator.env`.
+Render auto-deploy is deliberately **off** (`autoDeployTrigger: "off"` in `render.yaml`), so an ordinary
+push never interrupts a game in progress; deploys are explicit. The exception is a push that changes
+`render.yaml`: Blueprint sync redeploys the affected service (observed 2026-09-27), so check for active
+games before pushing blueprint changes. Free instances sleep after 15 minutes idle, so the first request
+takes about a minute. Hosted operator values live in ignored `.local/operator.env`.
+`TRUSTED_PROXY_HOPS=1` is measured, not assumed: the ingress probe in `apps/server/src/ingress.ts` logs
+the forwarding shape and warns if a change to the ingress path makes it wrong.
 
 ## Commands
 
