@@ -393,23 +393,36 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen>
       style: TextStyle(fontSize: 13),
     ),
     const SizedBox(height: 12),
-    // Label above rather than beside: the two segments plus a label do not fit
-    // a 320pt phone on one line.
     const Align(
       alignment: Alignment.centerLeft,
       child: Text('Bot skill', style: TextStyle(fontSize: 13)),
     ),
     const SizedBox(height: 6),
-    SegmentedButton<String>(
-      segments: const [
-        ButtonSegment(value: 'EASY', label: Text('Easy')),
-        ButtonSegment(value: 'MEDIUM', label: Text('Medium')),
+    Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final option in const {
+          'EASY': 'Easy',
+          'MEDIUM': 'Medium',
+          'HARD': 'Hard',
+        }.entries)
+          ChoiceChip(
+            label: Text(option.value),
+            selected: _difficulty == option.key,
+            onSelected: lobby.pending
+                ? null
+                : (_) => setState(() => _difficulty = option.key),
+          ),
       ],
-      selected: {_difficulty},
-      onSelectionChanged: lobby.pending
-          ? null
-          : (value) => setState(() => _difficulty = value.first),
     ),
+    const SizedBox(height: 6),
+    Text(switch (_difficulty) {
+      'EASY' => 'Relaxed play with mostly random choices.',
+      'HARD' =>
+        'Plans routes and trades, protects useful cards, and targets the leaders.',
+      _ => 'Balances production, building and trading.',
+    }, style: const TextStyle(fontSize: 13)),
     const SizedBox(height: 12),
     FilledButton.icon(
       onPressed: lobby.pending

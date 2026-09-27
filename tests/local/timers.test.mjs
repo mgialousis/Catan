@@ -23,7 +23,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function until(check, ms = 7000) { for (const end = Date.now() + ms; Date.now() < end;) { if (await check()) return; await sleep(25); } assert.fail('Expected state did not arrive'); }
 function patch(target, operations) { for (const p of operations) { const keys = p.path.slice(1).split('/'); let parent = target; for (const key of keys.slice(0, -1)) parent = parent[key]; if (p.op === 'remove') delete parent[keys.at(-1)]; else parent[keys.at(-1)] = structuredClone(p.value); } }
 
-test('persisted timers and recovery with four authenticated phones', { timeout: 180000 }, async t => {
+test('persisted timers and recovery with four authenticated clients', { timeout: 180000 }, async t => {
   const admin = new Client({ connectionString: local.adminDatabaseUrl }); await admin.connect();
   let app, base, roomId, invite, games, clients, state;
   const faults = {};
@@ -90,8 +90,12 @@ test('persisted timers and recovery with four authenticated phones', { timeout: 
       s=applyCommand(s,actor,command(s,'PLAY_DEVELOPMENT_CARD',{cardId,choice:{}}),{now:new Date().toISOString(),random:seeded(101)}).state;
       if(phase==='ROBBER_VICTIM') {
         const other=clients.find(c=>c.playerId!==actor).playerId;s=resources(s,{[other]:{ore:1}});
-        const vertex=Object.entries(s.publicState.buildings).find(([,b])=>b.ownerPlayerId===other)[0];
-        const hexId=s.publicState.board.vertices[vertex].hexIds.find(id=>id!==s.publicState.robberHexId);
+        // The first settlement can touch only the current robber hex at the coast.
+        // Search both settlements, so a randomly generated board never supplies undefined.
+        const hexId=Object.entries(s.publicState.buildings).filter(([,b])=>b.ownerPlayerId===other)
+          .flatMap(([vertex])=>s.publicState.board.vertices[vertex].hexIds)
+          .find(id=>id!==s.publicState.robberHexId);
+        assert.ok(hexId, 'a victim settlement borders a different robber destination');
         s=applyCommand(s,actor,command(s,'MOVE_ROBBER',{hexId}),{now:new Date().toISOString(),random:seeded(102)}).state;
       }
       s.version=(await readState()).version;

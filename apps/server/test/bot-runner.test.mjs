@@ -97,6 +97,7 @@ test('a practice game plays itself forward through the runner', () => {
 test('difficulty comes from room settings, with a sane default', () => {
   assert.equal(botDifficulty({ botDifficulty: 'EASY' }), 'EASY');
   assert.equal(botDifficulty({ botDifficulty: 'MEDIUM' }), 'MEDIUM');
+  assert.equal(botDifficulty({ botDifficulty: 'HARD' }), 'HARD');
   assert.equal(botDifficulty({ botDifficulty: 'IMPOSSIBLE' }), 'MEDIUM');
   assert.equal(botDifficulty({}), 'MEDIUM');
   assert.equal(botDifficulty(null), 'MEDIUM');

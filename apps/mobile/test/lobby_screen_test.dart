@@ -53,6 +53,17 @@ class ReadyTableLobby extends LobbyController {
 
 /// Connected, with no room yet: the home page a player actually lands on.
 class HomeLobby extends LobbyController {
+  String? requestedDifficulty;
+  @override
+  Future<void> saveEntry(String name, String code) async {}
+  @override
+  Future<void> createPractice({
+    int bots = 3,
+    String difficulty = 'MEDIUM',
+  }) async {
+    requestedDifficulty = difficulty;
+  }
+
   @override
   LobbyView build() => const LobbyView(loaded: true, nickname: 'Mira');
 
@@ -78,9 +89,9 @@ class InvitationLobby extends LobbyController {
   Future<void> initialize() async {}
 }
 
-Widget home() => ProviderScope(
+Widget home({HomeLobby? lobby, double textScale = 1}) => ProviderScope(
   overrides: [
-    lobbyProvider.overrideWith(HomeLobby.new),
+    lobbyProvider.overrideWith(() => lobby ?? HomeLobby()),
     connectionProvider.overrideWith(ReplyConnection.new),
     configProvider.overrideWithValue(
       const AppConfig(
@@ -91,10 +102,51 @@ Widget home() => ProviderScope(
       ),
     ),
   ],
-  child: const MaterialApp(home: LobbyScreen()),
+  child: MaterialApp(
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(textScaler: TextScaler.linear(textScale)),
+      child: child!,
+    ),
+    home: const LobbyScreen(),
+  ),
 );
 
 void main() {
+  testWidgets(
+    'Hard selection reaches practice creation at large text on a narrow phone',
+    (t) async {
+      t.view.physicalSize = const Size(320, 900);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      final lobby = HomeLobby();
+      await t.pumpWidget(home(lobby: lobby, textScale: 2));
+      await t.pumpAndSettle();
+      await t.enterText(find.byType(TextFormField).first, 'Tester');
+      await t.pumpAndSettle();
+      await t.ensureVisible(find.text('Hard'));
+      await t.tap(find.text('Hard'));
+      await t.pumpAndSettle();
+      expect(
+        t
+            .widget<ChoiceChip>(
+              find.ancestor(
+                of: find.text('Hard'),
+                matching: find.byType(ChoiceChip),
+              ),
+            )
+            .selected,
+        isTrue,
+      );
+      await t.ensureVisible(find.text('Start practice game'));
+      await t.tap(find.text('Start practice game'));
+      await t.pumpAndSettle();
+      expect(lobby.requestedDifficulty, 'HARD');
+      expect(t.takeException(), isNull);
+    },
+  );
+
   for (final ready in [false, true]) {
     testWidgets('starting sits with the roster when ready=$ready', (t) async {
       t.view.physicalSize = const Size(400, 1600);

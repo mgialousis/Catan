@@ -584,7 +584,7 @@ Dependencies: prior exit gates; free hosting accounts and access to test devices
 - [x] P7.2 Export any existing hosted data, apply reviewed migrations from the operator environment and verify permissions. **Verified:** project confirmed empty (no export needed), migration applied, permission matrix and append-only guarantees checked against the hosted database.
 - [ ] P7.3 Build/deploy the API Docker image; configure secrets, port, health checks, origins and graceful shutdown.
 - [x] P7.4 Build the Flutter web artifact with pinned tooling and public configuration; publish it as a Render static site. **Verified:** live at https://island-table-web.onrender.com with `cache-control: no-cache`.
-- [ ] P7.5 Produce a signed Android APK and an iOS development build; document installation separately from hosting. **Android release automation/build 10 complete; physical-device evidence and iOS provisioning remain open.**
+- [ ] P7.5 Produce a signed Android APK and an iOS development build; document installation separately from hosting. **Android release automation/build 29 complete; Android 13 and both networks confirmed, physical-device results and iOS provisioning remain open.**
 - [ ] P7.6 Run the deployed multi-client scenario suite in Section 4, including mixed native/web clients.
 - [ ] P7.7 Play a complete untimed and timed match across separate networks with three and four seats covered.
 - [ ] P7.8 Measure command latency, snapshot size, reconnect behavior, memory and bandwidth; correct failures within the target capacity.
@@ -911,3 +911,11 @@ The stack, private rooms, live base-game play, nickname entry and free initial c
 | Terminal data | Keep completed records for 30 days, with explicit maintenance/export before cleanup |
 
 Next action: **follow the current acceptance handoff in [status](docs/status.md); do not reprovision the existing services or reapply the foundation.** Phase 7's exit gate remains open. See [verification history](docs/phase-7-verification.md) and [deployment runbook](docs/deployment.md).
+
+
+September 27 follow-up: [acceptance and Hard-mode evidence](docs/acceptance-and-bots-2026-09-27.md).
+Saved-game hashes/log counts match over 73.48 hours. A finite one-client hosted
+practice probe measured command acknowledgement, state delivery and reconnect;
+it does not close the mixed-device or four-client soak gates. Distinct Hard bots
+are implemented locally, with a 24-game comparison and tactical/integration tests;
+release status is tracked in `docs/status.md`.

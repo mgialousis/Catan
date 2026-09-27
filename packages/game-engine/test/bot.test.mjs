@@ -40,7 +40,7 @@ function playOut(difficulty, seed, limit = 6000) {
     };
     const result = applyCommand(state, actor, command, { now, random: seeded(seed + step) });
     assertInvariants(result.state);
-    commands.push(`${actor.slice(-2)}:${move.type}`);
+    commands.push(`${actor.slice(-2)}:${move.type}:${JSON.stringify(move.payload)}`);
     state = result.state;
   }
   return { state, commands };
@@ -97,4 +97,12 @@ test('move generation offers nothing once the game is over or paused', () => {
   assert.deepEqual(legalCommands(viewFor(paused, state.serverState.turnOrder[0]), {}), []);
   const done = { ...state, publicState: { ...state.publicState, phase: 'COMPLETE' } };
   assert.deepEqual(legalCommands(viewFor(done, state.serverState.turnOrder[0]), {}), []);
+});
+
+test('Hard completes games legally and is deterministic', () => {
+  for (const seed of [7, 23, 42]) {
+    const { state, commands } = playOut('HARD', seed);
+    assert.equal(state.publicState.phase, 'COMPLETE', `Hard seed ${seed} stalled after ${commands.length}`);
+  }
+  assert.deepEqual(playOut('HARD', 31, 150).commands, playOut('HARD', 31, 150).commands);
 });

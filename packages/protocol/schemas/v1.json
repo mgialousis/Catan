@@ -114,7 +114,8 @@
           "type": "string",
           "enum": [
             "EASY",
-            "MEDIUM"
+            "MEDIUM",
+            "HARD"
           ]
         }
       },

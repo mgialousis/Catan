@@ -10,7 +10,7 @@ export interface BotJob {
   roomId: string; phaseId: string; version: number; playerId: string; commandId: string;
 }
 
-export const BOT_DIFFICULTIES: readonly BotDifficulty[] = ['EASY', 'MEDIUM'];
+export const BOT_DIFFICULTIES: readonly BotDifficulty[] = ['EASY', 'MEDIUM', 'HARD'];
 export function botDifficulty(settings: unknown): BotDifficulty {
   const value = (settings as { botDifficulty?: unknown } | null)?.botDifficulty;
   return BOT_DIFFICULTIES.includes(value as BotDifficulty) ? (value as BotDifficulty) : 'MEDIUM';

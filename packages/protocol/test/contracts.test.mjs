@@ -9,3 +9,10 @@ for (const fixture of fixtures) {
 test('every schema compiles independently', () => {
   for (const name of Object.keys(schema.definitions)) isValid(name, null);
 });
+
+
+test('settings accept every shipped difficulty and reject unknown tiers', () => {
+  const settings = {maxPlayers:4,turnLimitSeconds:null,boardMode:'STANDARD_RANDOM',rulesVersion:'base-2020-v1'};
+  for(const botDifficulty of ['EASY','MEDIUM','HARD']) assert.ok(isValid('settings',{...settings,botDifficulty}));
+  assert.equal(isValid('settings',{...settings,botDifficulty:'IMPOSSIBLE'}),false);
+});

@@ -40,6 +40,36 @@ class ReplyConnection extends ConnectionController {
 }
 
 void main() {
+  test('Hard practice is sent through the validated room protocol', () async {
+    final connection = ReplyConnection();
+    final container = ProviderContainer(
+      overrides: [
+        connectionProvider.overrideWith(() => connection),
+        lobbyStoreProvider.overrideWithValue(MemoryStore()),
+        protocolProvider.overrideWithValue(
+          Protocol(
+            jsonDecode(
+                  File(
+                    '../../packages/protocol/schemas/v1.json',
+                  ).readAsStringSync(),
+                )
+                as Map<String, dynamic>,
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    final lobby = container.read(lobbyProvider.notifier);
+    await lobby.saveEntry('Tester', '');
+    await lobby.createPractice(difficulty: 'HARD');
+    expect(connection.commands.single['type'], 'CREATE_ROOM');
+    expect(
+      connection.commands.single['payload']['settings']['botDifficulty'],
+      'HARD',
+    );
+    expect(connection.commands.single['payload']['bots'], 3);
+  });
+
   // The reported bug: Flutter web resolved setData while nothing reached the
   // clipboard, so the UI claimed success. Verify by reading back, and keep an
   // unreadable clipboard distinct from a failed write.

@@ -18,11 +18,11 @@ async function until(check, ms = 30000) {
   return false;
 }
 
-test('a solo practice game seats bots and they play it themselves', async t => {
+for (const difficulty of ['MEDIUM', 'HARD']) test(`${difficulty} practice seats bots and they play it themselves`, async t => {
   const admin = new Client({ connectionString: local.adminDatabaseUrl });
   await admin.connect();
   let app, base, socket, roomId;
-  const settings = { maxPlayers: 4, turnLimitSeconds: null, boardMode: 'STANDARD_RANDOM', rulesVersion: 'base-2020-v1', botDifficulty: 'MEDIUM' };
+  const settings = { maxPlayers: 4, turnLimitSeconds: null, boardMode: 'STANDARD_RANDOM', rulesVersion: 'base-2020-v1', botDifficulty: difficulty };
   t.after(async () => {
     // Stop the runtime before removing anything. The runner keeps playing an
     // active game, so deleting first leaves rows written after the delete.

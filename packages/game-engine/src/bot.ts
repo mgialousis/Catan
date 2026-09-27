@@ -1,12 +1,9 @@
 import { RESOURCE_TYPES, type EdgeId, type HexId, type PublicState, type ResourceType, type VertexId } from '@island/protocol/contracts';
 import { legalCommands, robberVictims, type LegalCommand, type LegalHints, type PlayerView } from './legal.js';
-import { canSettle, COSTS, has, total } from './rules.js';
+import { bankRate, canSettle, COSTS, has, total } from './rules.js';
+import { chooseHard } from './bot-hard.js';
 
-/**
- * HARD is deliberately absent. A tier that is secretly a copy of another is
- * worse than a missing one, so it is added when it plays differently.
- */
-export type BotDifficulty = 'EASY' | 'MEDIUM';
+export type BotDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 
 /**
  * Deterministic per decision. The runner seeds this from the game id, version
@@ -89,16 +86,17 @@ function score(move: LegalCommand, view: PlayerView, hints: LegalHints): number 
       return 500 + (p.players[move.payload.victimPlayerId as string]?.resourceCardCount ?? 0);
     case 'ACCEPT_TRADE': {
       const offer = p.trades[move.payload.offerId as string]!;
-      // Take it only when more cards come in than go out.
-      return 400 + (total(offer.give) - total(offer.receive)) * 50;
+      // Accept equal or favorable card counts; do not give two cards for one.
+      return total(offer.give) >= total(offer.receive) ? 400 + (total(offer.give) - total(offer.receive)) * 50 : 0;
     }
     case 'DECLINE_TRADE':
       return 300;
     case 'BANK_TRADE': {
-      // Four-for-one is a bad deal unless it completes something buildable.
+      // Evaluate the actual owned port rate and requested quantity.
       const after = { ...view.hand.resources };
       const give = move.payload.giveType as ResourceType, receive = move.payload.receiveType as ResourceType;
-      after[give] -= 4; after[receive] += 1;
+      const count = move.payload.receiveCount as number;
+      after[give] -= bankRate(p, me, give) * count; after[receive] += count;
       const unlocks = [COSTS.CITY, COSTS.SETTLEMENT, COSTS.ROAD].some(cost => !has(view.hand.resources, cost) && has(after, cost));
       return unlocks ? 800 : 50;
     }
@@ -136,6 +134,7 @@ export function chooseCommand(
     const pool = rest.length && next() < 0.8 ? rest : moves;
     return pool[Math.floor(next() * pool.length)] ?? null;
   }
+  if (difficulty === 'HARD') return chooseHard(view, hints, moves, next);
   let best = moves[0]!, bestScore = -Infinity;
   for (const move of moves) {
     // The jitter only separates equal scores; it never reorders real ones.

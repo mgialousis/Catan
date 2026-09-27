@@ -1,9 +1,30 @@
 # Current project status
 
-Updated 2026-09-21 (Europe/Zurich). Use this file for handoff; dated
+Updated 2026-09-27 (Europe/Zurich). Use this file for handoff; dated
 verification documents retain historical evidence, not current deployment status.
 
-## Current handoff — review fixes released and verified
+## Current handoff — acceptance follow-up and Hard mode prepared
+
+- Hosted release remains `e8744ee` / Android build **29**. The AI changes below
+  are local work and have not been committed, deployed or built into a new APK.
+- Added distinct Hard bots, public-information planning and a responsive skill
+  selector. Medium port valuation and unfavorable-trade decisions are corrected.
+- A 24-game seat-rotated sample finished every game; Hard won 14 against three
+  Medium opponents. Local Hard decision p95 was 0.194 ms; this is not hosted latency.
+- Hosted practice command/reconnect probe passed: 175 ms median acknowledgement,
+  218 ms median state delivery, 598 ms reconnect, snapshots 13,045–14,426 bytes.
+  This was one authenticated client plus bots, not the four-client soak.
+- All four saved games remain paused and unchanged across 73.48 hours of snapshot
+  comparisons. Synthetic probe rooms were closed; no multiplayer slot was used.
+- Validation: **380 Flutter, 277 engine/server/protocol and 76 local database
+  tests pass**; static analysis is clean. Integration cleanup left all six
+  application table counts unchanged.
+- Android 13 and Wi-Fi/mobile data are confirmed; exact phone model, installed
+  build and physical acceptance results remain unverified. No iPhone is available.
+- Render metrics are blocked by an expired/rejected OAuth refresh token. Phase 7
+  remains partial; see [evidence, limitations and phone procedure](acceptance-and-bots-2026-09-27.md).
+
+## Previous release — review fixes released and verified
 
 - Fixes committed and pushed as `e8744ee`. Android **build 29** succeeded and
   published the signed APK: https://github.com/mgialousis/Catan/actions/runs/35619647214.
@@ -139,8 +160,8 @@ Solo practice ships end to end and is in real use on the hosted stack.
   structurally unable to see another hand, the bank or the deck. Three facts a seat
   legitimately knows but `PublicState` omits arrive as explicit hints: remaining
   development cards, the pending setup vertex, and per-resource bank stock.
-- Difficulty is `EASY` (uniform among legal moves) or `MEDIUM` (scored). `HARD` is
-  deliberately absent until it plays differently from `MEDIUM`.
+- The deployed release offers `EASY` (random) and `MEDIUM` (scored). Local work adds
+  `HARD` with bounded route/resource planning; see the current handoff for release status.
 - The runner takes the same path a person's command takes — fence, per-command
   advisory lock, receipt, room row, game row. A job id carries room, phase and
   version, so a retry after a crash replays the recorded move rather than inventing
@@ -200,7 +221,7 @@ or never update their advisory `last_seen_at` timestamp.
 | P7.4 Web | Live, real configuration, entry-point cache policy checked. |
 | P7.5 Native | Signed Android APK published to a release that downloads without an account, verified anonymously against its checksum. Exact device/build acceptance, iOS provisioning and physical iPhone install remain open. |
 | P7.6–P7.7 Matches | Three hosted practice games ran to completion with 708 automated moves, exercising the rules end to end without needing to assemble players. That is not the gate: mixed native/web privacy and reconnect cases, and complete timed and untimed **human** matches on separate networks, remain open. |
-| P7.8 Performance | Regression tests and fewer rendering operations verified; restored hosted recipient snapshots measure 13,715–13,804 bytes uncompressed. Board rendering fell from roughly 300 blur operations per paint to 2 in the terrain layer, and the user confirms scrolling and zooming feel smoother; **no frame time has been measured**, because `flutter test` rasterises in software and its own cost swamps the paint, so only operation counts are evidence. Physical Android frame timings, command/convergence/reconnect timings and a two-hour four-client soak remain open — a bot-only game is now the obvious soak driver. |
+| P7.8 Performance | Regression tests and fewer rendering operations verified; restored hosted recipient snapshots measure 13,715–13,804 bytes uncompressed. Board rendering fell from roughly 300 blur operations per paint to 2 in the terrain layer, and the user confirms scrolling and zooming feel smoother; **no frame time has been measured**, because `flutter test` rasterises in software and its own cost swamps the paint, so only operation counts are evidence. A small hosted practice probe now supplies command/delivery/reconnect samples (see current handoff). Physical frame timings, measurements under four-client load and a two-hour four-client soak remain open. |
 | P7.9 Operations | Hosted application backup and isolated local restore verified September 19. Full Auth recovery and privileged hosted retention still open; local-copy retention dry run found zero eligible records. |
 | P7.10 Handoff | Release links and limitations recorded here; device versions and final acceptance results still needed. |
 
@@ -248,14 +269,16 @@ the three restored games. Render's first two post-deploy memory samples were abo
 
 ## Next acceptance session
 
-User device availability: one Android phone, APK downloaded from GitHub; exact model
-and installed build not yet recorded. No iPhone is currently available, and no
-Android device is attached to this workstation. iPhone acceptance remains unverified.
+User device availability: one Android 13 phone, with Wi-Fi and mobile data. Exact
+model and installed APK build are unconfirmed. No iPhone is available and no Android
+phone is attached to this workstation. Follow the phone procedure in the
+[latest acceptance report](acceptance-and-bots-2026-09-27.md).
 
-A practice game now needs neither the live room slot nor other people, so the
-soak and latency work under P7.8 no longer waits on anybody's availability.
+Practice probes need no multiplayer slot and can measure one authenticated owner
+plus bots independently. Full four-human hosted tests need the multiplayer slot
+free; the saved multiplayer game remains paused and must be preserved. Multiple
+connections for the same owner do not establish recipient isolation across seats.
 
-Next: complete the available non-disruptive acceptance checks. Hosted synthetic
-games/soaks need the one active room slot to be free; physical-device checks need
-the players/devices. The API fix takes effect with the existing APK; no reinstall
-is necessary for pause-write behavior.
+Next: complete the physical checks and mixed-client/full-match/soak gates, obtain
+current account/resource evidence, and release the tested Hard-mode changes with
+the API deployed before the new clients. The pause-write fix is already deployed.
