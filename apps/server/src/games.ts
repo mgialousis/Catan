@@ -21,7 +21,7 @@ type Row = Record<string, any>;
 type Ack = { commandId: string; status: 'ACCEPTED' | 'REJECTED'; scope: 'GAME'; roomId: string | null; version: number | null; serverTime: string; error?: ReturnType<typeof safeError> };
 type Subscription = { socket: Socket; roomId: string; playerId: string; userId: string; version: number };
 /** Test hooks inject crashes at real transaction/delivery boundaries; unset in the application. */
-export interface GameFaults { beforeCommit?: () => void; afterCommit?: () => void; afterSend?: () => void }
+export interface GameFaults { beforeCommit?: () => void; afterCommit?: () => void; afterSend?: () => void; validated?: (roomId: string) => void }
 export class Games {
   private readonly subscriptions = new Map<string, Subscription>();
   private readonly queues = new Map<string, Promise<void>>();
@@ -43,6 +43,15 @@ export class Games {
   private readonly isolated = new Map<string, { reason: string; kind: 'state' | 'delivery'; checkedAt: number }>();
   /** How long background work leaves an isolated game alone before looking again, so a repaired row returns without a restart. */
   static readonly RECHECK_MS = 60_000;
+  /**
+   * The row version (Postgres `xmin`) of each saved game last validated. Any
+   * write to the row changes it -- a move, a pause, a manual repair in SQL -- so
+   * only a row that is byte-for-byte unchanged skips validation. Without this
+   * every pass of the tick re-validated every active game even when nothing had
+   * happened. Keyed on the row rather than on objects: the engine's own tests
+   * mutate validated states and rely on assertInvariants re-checking them.
+   */
+  private readonly validatedRows = new Map<string, string>();
   get storageReady(): boolean { return !this.unavailable && !this.closing; }
   readonly #faults: Readonly<GameFaults>;
   constructor(private readonly database: Database, private readonly rooms: Rooms, faults: Readonly<GameFaults> = Object.freeze({})) { this.#faults = faults; if (database) database.onUnavailable = () => this.storageLost(); }
@@ -55,17 +64,26 @@ export class Games {
     try { return await work(); } finally { release(); if (this.queues.get(roomId) === queued) this.queues.delete(roomId); }
   }
   private state(row: Row): CanonicalState {
-    const roomId = row.room_id as string;
+    const roomId = row.room_id as string, rowVersion = row.row_xmin as string | undefined;
     try {
       const state: CanonicalState = { roomId: row.room_id, version: row.version, rulesVersion: row.rules_version,
         stateSchemaVersion: row.schema_version, protocolVersion: 1, publicState: row.public_state, privateState: row.private_state, serverState: row.server_state, clockState: row.clock_state };
-      try { assertInvariants(state); assertClock(state); } catch { throw new RepairRequired('Invalid saved game'); }
-      if (state.publicState.phase !== row.phase || state.publicState.phaseId !== row.phase_id || state.publicState.turnNumber !== row.turn_number || state.publicState.activePlayerId !== row.active_player_id) throw new RepairRequired('Game index mismatch');
-      if ((row.next_deadline_at?.toISOString() ?? null) !== nextDeadline(state)) throw new RepairRequired('Clock index mismatch');
+      // Validation is a pure function of the row, so an unchanged row passes as it
+      // did before. A query without the row version always validates in full.
+      if (!rowVersion || this.validatedRows.get(roomId) !== rowVersion) {
+        try { assertInvariants(state); assertClock(state); } catch { throw new RepairRequired('Invalid saved game'); }
+        if (state.publicState.phase !== row.phase || state.publicState.phaseId !== row.phase_id || state.publicState.turnNumber !== row.turn_number || state.publicState.activePlayerId !== row.active_player_id) throw new RepairRequired('Game index mismatch');
+        if ((row.next_deadline_at?.toISOString() ?? null) !== nextDeadline(state)) throw new RepairRequired('Clock index mismatch');
+        this.#faults.validated?.(roomId);
+        if (rowVersion) {
+          if (this.validatedRows.size >= 5000) this.validatedRows.clear();
+          this.validatedRows.set(roomId, rowVersion);
+        }
+      }
       this.restored(roomId, 'state');
       return state;
     } catch (error) {
-      if (error instanceof RepairRequired) this.isolate(roomId, error.message, 'state');
+      if (error instanceof RepairRequired) { this.validatedRows.delete(roomId); this.isolate(roomId, error.message, 'state'); }
       throw error;
     }
   }
@@ -154,7 +172,7 @@ export class Games {
           try {
             const player = room && (await db.query('SELECT id FROM app.players WHERE room_id=$1 AND auth_user_id=$2 AND left_at IS NULL', [room.id, userId])).rows[0];
             if (!player) throw new RuleError('FORBIDDEN');
-            const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE', [room.id])).rows[0];
+            const row = (await db.query('SELECT *, xmin::text AS row_xmin FROM app.game_states WHERE room_id=$1 FOR UPDATE', [room.id])).rows[0];
             if (!row) throw new RuleError('GAME_NOT_AVAILABLE');
             if (room.status === 'FINISHED' || room.status === 'ABANDONED') throw new RuleError('GAME_FINISHED');
             if (!['ACTIVE', 'PAUSED'].includes(room.status)) throw new RuleError('GAME_NOT_AVAILABLE');
@@ -214,7 +232,7 @@ export class Games {
     const room = (await db.query('SELECT * FROM app.rooms WHERE id=$1 FOR UPDATE', [roomId])).rows[0];
     const own = room && (await db.query('SELECT id FROM app.players WHERE room_id=$1 AND auth_user_id=$2 AND left_at IS NULL', [roomId, userId])).rows[0];
     if (!own) throw new LobbyError('FORBIDDEN');
-    const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1', [roomId])).rows[0];
+    const row = (await db.query('SELECT *, xmin::text AS row_xmin FROM app.game_states WHERE room_id=$1', [roomId])).rows[0];
     return { room, own, row };
   }
   async subscribe(socket: Socket, roomId: string, force = false): Promise<void> {
@@ -397,7 +415,7 @@ export class Games {
       const room = (await db.query('SELECT * FROM app.rooms WHERE id=$1 FOR UPDATE',[job.roomId])).rows[0];
       if (!room || room.status !== 'ACTIVE') return 'STALE' as const;
       this.rooms.assertOwnership(room.runtime_epoch);
-      const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE',[job.roomId])).rows[0];
+      const row = (await db.query('SELECT *, xmin::text AS row_xmin FROM app.game_states WHERE room_id=$1 FOR UPDATE',[job.roomId])).rows[0];
       const state = this.state(row), now = await this.now(db);
       if (!matchesJob(state,job)) return 'STALE' as const;
       if (Date.parse(job.deadline) > Date.parse(now)) return 'EARLY' as const;
@@ -423,7 +441,7 @@ export class Games {
       const room = (await db.query('SELECT * FROM app.rooms WHERE id=$1 FOR UPDATE', [job.roomId])).rows[0];
       if (!room || room.status !== 'ACTIVE') return 'STALE' as const;
       this.rooms.assertOwnership(room.runtime_epoch);
-      const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE', [job.roomId])).rows[0];
+      const row = (await db.query('SELECT *, xmin::text AS row_xmin FROM app.game_states WHERE room_id=$1 FOR UPDATE', [job.roomId])).rows[0];
       const state = this.state(row), now = await this.now(db);
       if (!matchesBotJob(state, job)) return 'STALE' as const;
       // Moves are paced so a practice game reads like people playing rather
@@ -461,7 +479,7 @@ export class Games {
       // and every restart met the same row: the whole service crash-looped.
       await db.query('SAVEPOINT recover_room');
       try {
-        const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE',[room.id])).rows[0];
+        const row = (await db.query('SELECT *, xmin::text AS row_xmin FROM app.game_states WHERE room_id=$1 FOR UPDATE',[room.id])).rows[0];
         if (!row) throw new RepairRequired('Missing saved game');
         const previous = this.state(row), now = await this.now(db);
         const checkpoint = Math.min(Date.parse(now), Math.max(row.updated_at.getTime(), room.runtime_heartbeat_at?.getTime() ?? row.updated_at.getTime()));
@@ -498,7 +516,7 @@ export class Games {
       // Capture jobs without holding the room lock while acquiring the timer advisory lock.
       const jobs = this.clocksRunning ? await this.database.transaction(async db => {
         await this.rooms.fence(db);
-        const rows = (await db.query("SELECT g.* FROM app.game_states g JOIN app.rooms r ON r.id=g.room_id WHERE r.status='ACTIVE' AND r.runtime_epoch=$1 AND g.next_deadline_at <= clock_timestamp() ORDER BY g.room_id",[this.rooms.epoch])).rows;
+        const rows = (await db.query("SELECT g.*, g.xmin::text AS row_xmin FROM app.game_states g JOIN app.rooms r ON r.id=g.room_id WHERE r.status='ACTIVE' AND r.runtime_epoch=$1 AND g.next_deadline_at <= clock_timestamp() ORDER BY g.room_id",[this.rooms.epoch])).rows;
         return rows.flatMap(row => this.forRoom(row.room_id, () => timerJobs(this.state(row)), []));
       }) : [];
       for (const job of jobs) await this.forRoomAsync(job.roomId, () => this.runTimer(job), 'STALE');
@@ -506,7 +524,7 @@ export class Games {
       // lock, then applied one at a time under it.
       const seats = await this.database.transaction(async db => {
         await this.rooms.fence(db);
-        const rows = (await db.query("SELECT g.*, r.settings FROM app.game_states g JOIN app.rooms r ON r.id=g.room_id WHERE r.status='ACTIVE' AND r.runtime_epoch=$1 ORDER BY g.room_id",[this.rooms.epoch])).rows;
+        const rows = (await db.query("SELECT g.*, g.xmin::text AS row_xmin, r.settings FROM app.game_states g JOIN app.rooms r ON r.id=g.room_id WHERE r.status='ACTIVE' AND r.runtime_epoch=$1 ORDER BY g.room_id",[this.rooms.epoch])).rows;
         return rows.flatMap(row => this.forRoom(row.room_id, () => botJobs(this.state(row), botDifficulty(row.settings)), []));
       });
       let botsPending = false;
@@ -514,17 +532,30 @@ export class Games {
         const outcome = await this.forRoomAsync(job.roomId, () => this.runBot(job), 'STALE');
         botsPending ||= outcome === 'EARLY';
       }
-      let clocksRunning = false;
-      await this.database.transaction(async db => {
-        await this.rooms.fence(db);
-        const rooms = (await db.query("SELECT * FROM app.rooms WHERE status IN ('ACTIVE','PAUSED') ORDER BY id FOR UPDATE")).rows;
-        for (const room of rooms) {
+      let clocksRunning = false, passedOver = false;
+      // Only games whose presence can change are visited. A game paused for a
+      // host decision -- manual, recovery, an empty seat -- is not locked or even
+      // parsed, so however many of them accumulate they cost the pass nothing.
+      // It used to lock every live room in one statement and validate each before
+      // skipping it, holding them all until the whole pass finished.
+      const candidates = (await this.database.pool.query(`SELECT r.id FROM app.rooms r LEFT JOIN app.game_states g ON g.room_id=r.id
+        WHERE r.status='ACTIVE' OR (r.status='PAUSED' AND NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements_text(g.public_state->'pauseReasons') AS reason WHERE reason<>'DISCONNECTED'))
+        ORDER BY r.id`)).rows as { id: string }[];
+      for (const { id } of candidates) {
+        if (this.isIsolated(id)) continue;
+        // One room per transaction, and a room a command is using is passed
+        // over rather than waited on: the command wakes the loop when it commits.
+        // So a move in one game never waits on this pass's work in another.
+        const visited = await this.database.transaction(async db => {
+          await this.rooms.fence(db);
+          const room = (await db.query("SELECT * FROM app.rooms WHERE id=$1 AND status IN ('ACTIVE','PAUSED') FOR UPDATE SKIP LOCKED", [id])).rows[0];
+          if (!room) return false;
           this.rooms.assertOwnership(room.runtime_epoch);
-          if (this.isIsolated(room.id)) continue;
-          const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE',[room.id])).rows[0];
-          if (!row) { this.isolate(room.id, 'Missing saved game', 'state'); continue; }
+          const row = (await db.query('SELECT *, xmin::text AS row_xmin FROM app.game_states WHERE room_id=$1 FOR UPDATE',[room.id])).rows[0];
+          if (!row) { this.isolate(room.id, 'Missing saved game', 'state'); return true; }
           const parsed = this.forRoom(room.id, () => this.state(row), null);
-          if (!parsed) continue;
+          if (!parsed) return true;
           let state = parsed; const now = await this.now(db);
           // Manual/recovery pauses require an explicit host resume regardless of
           // presence. Reconnecting phones must not toggle DISCONNECTED here:
@@ -532,9 +563,11 @@ export class Games {
           // event forever while the saved game itself has not changed. Presence
           // is delivered separately; RESUME_GAME checks requiredOnline under
           // the room lock. Keep legacy combined reasons intact until that resume.
-          if (state.publicState.pauseReasons.some(reason => reason !== 'DISCONNECTED')) continue;
+          // (The selection above already leaves these out; this guards a pause
+          // that landed between selecting and locking.)
+          if (state.publicState.pauseReasons.some(reason => reason !== 'DISCONNECTED')) return true;
           // A deadline crossed since job collection. Resolve it on the next tick before pausing.
-          if (timerJobs(state).some(job => Date.parse(job.deadline) <= Date.parse(now))) { clocksRunning = true; delay = 0; continue; }
+          if (timerJobs(state).some(job => Date.parse(job.deadline) <= Date.parse(now))) { clocksRunning = true; delay = 0; return true; }
           const reasons = new Set<PauseReason>(state.publicState.pauseReasons);
           if (this.requiredOnline(state)) reasons.delete('DISCONNECTED'); else reasons.add('DISCONNECTED');
           state = await this.changePause(db,room,state,[...reasons],now,'PRESENCE_PAUSE');
@@ -543,8 +576,13 @@ export class Games {
             await db.query("UPDATE app.rooms SET runtime_heartbeat_at=clock_timestamp() WHERE id=$1 AND runtime_epoch=$2 AND (runtime_heartbeat_at IS NULL OR runtime_heartbeat_at < clock_timestamp()-interval '15 seconds')",[room.id,this.rooms.epoch]);
             delay = Math.min(delay ?? 15000, nextDeadline(state) ? 250 : 15000);
           }
-        }
-      });
+          return true;
+        });
+        passedOver ||= !visited;
+      }
+      // A room passed over this time may be running a clock nobody has looked
+      // at: keep collecting timers, and come back to it soon.
+      if (passedOver) { clocksRunning ||= this.clocksRunning; delay = Math.min(delay ?? 250, 250); }
       // Keep ticking while a paced move is still waiting to land.
       if (botsPending || seats.length) delay = Math.min(delay ?? BOT_BASE_PACE_MS, BOT_BASE_PACE_MS);
       this.clocksRunning = clocksRunning;
