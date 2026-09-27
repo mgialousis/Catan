@@ -328,7 +328,11 @@ export class Rooms {
         await db.query("UPDATE app.outbox_events SET attempts=attempts+1,published_at=clock_timestamp() WHERE room_id=$1 AND scope='ROOM' AND published_at IS NULL", [room.id]);
       }
     });
-    for (const sub of this.subscriptions.values()) if (changedRooms.has(sub.roomId)) await this.games?.subscribe(sub.socket, sub.roomId);
+    // Each socket resynchronises on its own: one game that cannot be loaded
+    // must not stop every socket after it in the loop from catching up.
+    for (const sub of this.subscriptions.values()) if (changedRooms.has(sub.roomId)) {
+      await this.games?.subscribe(sub.socket, sub.roomId).catch(() => sub.socket.emit('session.error', safeError('SERVICE_UNAVAILABLE')));
+    }
   }
   async maintenance(): Promise<void> {
     if (this.ticking || this.stopped) return;

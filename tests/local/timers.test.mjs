@@ -255,13 +255,20 @@ test('persisted timers and recovery with four authenticated clients', { timeout:
       clients=await Promise.all(guests.map(connect));await converge();assert.equal(state.clockState.remainingTurnMs,paused.clockState.remainingTurnMs);
       assert.equal((await send(clients[0],command(state,'RESUME_GAME'))).status,'ACCEPTED');await converge();
     });
-    await t.test('corrupt persisted state fails readiness without regenerating any inventory',async()=>{
+    await t.test('a corrupt saved game is isolated, never regenerated, and survives a restart',async()=>{
       await fixture();await quiesce();const before=state;
       await admin.query('UPDATE app.game_states SET next_deadline_at=NULL WHERE room_id=$1',[roomId]);
-      await games.tick();assert.equal(games.storageReady,false);
-      assert.equal((await fetch(`${base}/health/ready`)).status,503);
+      // One damaged game used to stop the whole service: readiness failed and
+      // every room refused every action. Now only that game is set aside.
+      await games.tick();assert.equal(games.storageReady,true);assert.ok(games.isIsolated(roomId));
+      assert.equal((await fetch(`${base}/health/ready`)).status,200);
       assert.equal((await send(active(before),command(before,'ROLL_DICE'))).error.code,'SERVICE_UNAVAILABLE');
       const unchanged=await readState();assert.equal(unchanged.version,before.version);assert.deepEqual(unchanged.privateState,before.privateState);
+      // A restart with the row still damaged has to boot. It used to fail
+      // startup on this one row, so every restart crash-looped.
+      await app.close();app=await createApp({...loadConfig(),port:0});await app.listen(0,'127.0.0.1');base=await app.getUrl();games=app.get(Games);
+      assert.equal((await fetch(`${base}/health/ready`)).status,200);assert.ok(games.isIsolated(roomId));
+      const kept=await readState();assert.equal(kept.version,before.version,'recovery never replaces a state it cannot trust');assert.deepEqual(kept.privateState,before.privateState);
       // Privileged repair of the deliberately damaged index, followed by a fresh runtime.
       await admin.query('UPDATE app.game_states SET next_deadline_at=$2 WHERE room_id=$1',[roomId,nextDeadline(before)]);
       await app.close();app=await createApp({...loadConfig(),port:0});await app.listen(0,'127.0.0.1');base=await app.getUrl();games=app.get(Games);

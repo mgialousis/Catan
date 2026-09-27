@@ -32,9 +32,18 @@ export class Games {
   private clocksRunning = false;
   private wakeRequested = false;
   private unavailable = false;
-  private repairRequired = false;
   private closing = false;
-  get storageReady(): boolean { return !this.unavailable && !this.repairRequired && !this.closing; }
+  /**
+   * Saved games that failed validation. Each is left exactly as it is -- no
+   * timer, bot, pause or command may replace a state the runtime cannot trust --
+   * while every other game carries on. This used to be a process-wide stop: it
+   * refused every lobby action and failed readiness, and the restart that
+   * followed crash-looped on the same row, so no deploy could get past it.
+   */
+  private readonly isolated = new Map<string, { reason: string; kind: 'state' | 'delivery'; checkedAt: number }>();
+  /** How long background work leaves an isolated game alone before looking again, so a repaired row returns without a restart. */
+  static readonly RECHECK_MS = 60_000;
+  get storageReady(): boolean { return !this.unavailable && !this.closing; }
   readonly #faults: Readonly<GameFaults>;
   constructor(private readonly database: Database, private readonly rooms: Rooms, faults: Readonly<GameFaults> = Object.freeze({})) { this.#faults = faults; if (database) database.onUnavailable = () => this.storageLost(); }
   private async serial<T>(roomId: string, work: () => Promise<T>): Promise<T> {
@@ -46,12 +55,50 @@ export class Games {
     try { return await work(); } finally { release(); if (this.queues.get(roomId) === queued) this.queues.delete(roomId); }
   }
   private state(row: Row): CanonicalState {
-    const state: CanonicalState = { roomId: row.room_id, version: row.version, rulesVersion: row.rules_version,
-      stateSchemaVersion: row.schema_version, protocolVersion: 1, publicState: row.public_state, privateState: row.private_state, serverState: row.server_state, clockState: row.clock_state };
-    try { assertInvariants(state); assertClock(state); } catch { throw new RepairRequired('Invalid saved game'); }
-    if (state.publicState.phase !== row.phase || state.publicState.phaseId !== row.phase_id || state.publicState.turnNumber !== row.turn_number || state.publicState.activePlayerId !== row.active_player_id) throw new RepairRequired('Game index mismatch');
-    if ((row.next_deadline_at?.toISOString() ?? null) !== nextDeadline(state)) throw new RepairRequired('Clock index mismatch');
-    return state;
+    const roomId = row.room_id as string;
+    try {
+      const state: CanonicalState = { roomId: row.room_id, version: row.version, rulesVersion: row.rules_version,
+        stateSchemaVersion: row.schema_version, protocolVersion: 1, publicState: row.public_state, privateState: row.private_state, serverState: row.server_state, clockState: row.clock_state };
+      try { assertInvariants(state); assertClock(state); } catch { throw new RepairRequired('Invalid saved game'); }
+      if (state.publicState.phase !== row.phase || state.publicState.phaseId !== row.phase_id || state.publicState.turnNumber !== row.turn_number || state.publicState.activePlayerId !== row.active_player_id) throw new RepairRequired('Game index mismatch');
+      if ((row.next_deadline_at?.toISOString() ?? null) !== nextDeadline(state)) throw new RepairRequired('Clock index mismatch');
+      this.restored(roomId, 'state');
+      return state;
+    } catch (error) {
+      if (error instanceof RepairRequired) this.isolate(roomId, error.message, 'state');
+      throw error;
+    }
+  }
+  /** Whether to leave a game alone for now. After RECHECK_MS it is tried again. */
+  isIsolated(roomId: string | null | undefined): boolean {
+    const entry = roomId ? this.isolated.get(roomId) : undefined;
+    return !!entry && Date.now() - entry.checkedAt < Games.RECHECK_MS;
+  }
+  private isolate(roomId: string, reason: string, kind: 'state' | 'delivery'): void {
+    const entry = this.isolated.get(roomId);
+    if (entry) { entry.checkedAt = Date.now(); return; }
+    this.isolated.set(roomId, { reason, kind, checkedAt: Date.now() });
+    // The room id is what an operator needs to find the row, and the reason is
+    // a fixed string. No saved state, payload or identity reaches the log.
+    console.error(`Game ${roomId} needs repair (${reason}); it is isolated and every other game continues.`);
+    for (const sub of [...this.subscriptions.values()]) if (sub.roomId === roomId) {
+      this.subscriptions.delete(sub.socket.id);
+      sub.socket.emit('session.error', safeError('SERVICE_UNAVAILABLE'));
+    }
+  }
+  private restored(roomId: string, kind: 'state' | 'delivery'): void {
+    if (this.isolated.get(roomId)?.kind !== kind) return;
+    this.isolated.delete(roomId);
+    console.log(`Game ${roomId} validates again and is back in play.`);
+  }
+  /** One game's damaged row stays that game's problem: `state` has isolated it, and the caller moves on. */
+  private forRoom<T>(roomId: string, work: () => T, fallback: T): T {
+    if (this.isIsolated(roomId)) return fallback;
+    try { return work(); } catch (error) { if (error instanceof RepairRequired) return fallback; throw error; }
+  }
+  private async forRoomAsync<T>(roomId: string, work: () => Promise<T>, fallback: T): Promise<T> {
+    if (this.isIsolated(roomId)) return fallback;
+    try { return await work(); } catch (error) { if (error instanceof RepairRequired) return fallback; throw error; }
   }
   private values(state: CanonicalState) {
     const p = state.publicState;
@@ -91,6 +138,8 @@ export class Games {
       serverTime: new Date().toISOString(), ...(code ? { error: safeError(code) } : {}) };
   }
   async command(userId: string, cmd: Command): Promise<Ack> {
+    // No receipt, as when validation throws: the player may retry once it is repaired.
+    if (this.isIsolated(cmd.roomId)) return this.ack(cmd, 'SERVICE_UNAVAILABLE');
     const actorKey = `user:${userId}`, requestHash = hash(canonical(cmd));
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -169,6 +218,7 @@ export class Games {
     return { room, own, row };
   }
   async subscribe(socket: Socket, roomId: string, force = false): Promise<void> {
+    if (this.isIsolated(roomId)) throw new LobbyError('SERVICE_UNAVAILABLE');
     await this.serial(roomId, async () => {
       const result = await this.database.transaction(async db => {
         await this.rooms.fence(db); const member = await this.member(db, socket.data.identity.userId, roomId);
@@ -192,7 +242,18 @@ export class Games {
   async flush(): Promise<void> {
     if (this.stopped) return;
     const rooms = (await this.database.pool.query("SELECT DISTINCT room_id FROM app.outbox_events WHERE scope='GAME' AND published_at IS NULL ORDER BY room_id")).rows;
-    for (const { room_id: roomId } of rooms) await this.serial(roomId, () => this.database.transaction(async db => {
+    for (const { room_id: roomId } of rooms) {
+      if (this.isIsolated(roomId)) continue;
+      try { await this.deliver(roomId); this.restored(roomId, 'delivery'); }
+      catch (error) {
+        // Its rows stay unpublished and it gets nothing further; every other room still does.
+        if (!(error instanceof RepairRequired)) throw error;
+        this.isolate(roomId, error.message, 'delivery');
+      }
+    }
+  }
+  private async deliver(roomId: string): Promise<void> {
+    await this.serial(roomId, () => this.database.transaction(async db => {
       await this.rooms.fence(db, this.closing);
       await db.query('SELECT id FROM app.rooms WHERE id=$1 FOR UPDATE', [roomId]);
       const members = (await db.query('SELECT id,auth_user_id FROM app.players WHERE room_id=$1 AND left_at IS NULL', [roomId])).rows;
@@ -395,11 +456,22 @@ export class Games {
     for (const room of rooms) {
       await db.query('UPDATE app.rooms SET runtime_epoch=$2 WHERE id=$1',[room.id,this.rooms.epoch]); room.runtime_epoch = this.rooms.epoch;
       if (room.status === 'LOBBY') continue;
-      const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE',[room.id])).rows[0];
-      if (!row) throw new RepairRequired('Missing saved game; repair required');
-      const previous = this.state(row), now = await this.now(db);
-      const checkpoint = Math.min(Date.parse(now), Math.max(row.updated_at.getTime(), room.runtime_heartbeat_at?.getTime() ?? row.updated_at.getTime()));
-      await this.changePause(db, room, previous, [...new Set<PauseReason>([...previous.publicState.pauseReasons, reason])], now, 'RECOVER_GAME', exact ? now : new Date(checkpoint).toISOString());
+      // A saved game that fails validation is left exactly as it is and
+      // isolated, and recovery carries on. Throwing here used to fail startup,
+      // and every restart met the same row: the whole service crash-looped.
+      await db.query('SAVEPOINT recover_room');
+      try {
+        const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE',[room.id])).rows[0];
+        if (!row) throw new RepairRequired('Missing saved game');
+        const previous = this.state(row), now = await this.now(db);
+        const checkpoint = Math.min(Date.parse(now), Math.max(row.updated_at.getTime(), room.runtime_heartbeat_at?.getTime() ?? row.updated_at.getTime()));
+        await this.changePause(db, room, previous, [...new Set<PauseReason>([...previous.publicState.pauseReasons, reason])], now, 'RECOVER_GAME', exact ? now : new Date(checkpoint).toISOString());
+        await db.query('RELEASE SAVEPOINT recover_room');
+      } catch (error) {
+        await db.query('ROLLBACK TO SAVEPOINT recover_room'); await db.query('RELEASE SAVEPOINT recover_room');
+        if (!(error instanceof RepairRequired)) throw error;
+        this.isolate(room.id, error.message, 'state');
+      }
     }
   }
   private storageLost(): void {
@@ -409,13 +481,13 @@ export class Games {
     this.wake(1000);
   }
   wake(delay = 0): void {
-    if (this.stopped || this.closing || this.repairRequired) return;
+    if (this.stopped || this.closing) return;
     if (this.ticking) { this.wakeRequested = true; return; }
     clearTimeout(this.runtimeTimer);
     this.runtimeTimer = setTimeout(() => { this.runtimeTimer = undefined; void this.tick(); }, delay); this.runtimeTimer.unref();
   }
   async tick(): Promise<void> {
-    if (this.ticking || this.stopped || this.closing || this.repairRequired) return;
+    if (this.ticking || this.stopped || this.closing) return;
     this.ticking = true;
     let delay: number | null = null;
     try {
@@ -427,19 +499,19 @@ export class Games {
       const jobs = this.clocksRunning ? await this.database.transaction(async db => {
         await this.rooms.fence(db);
         const rows = (await db.query("SELECT g.* FROM app.game_states g JOIN app.rooms r ON r.id=g.room_id WHERE r.status='ACTIVE' AND r.runtime_epoch=$1 AND g.next_deadline_at <= clock_timestamp() ORDER BY g.room_id",[this.rooms.epoch])).rows;
-        return rows.flatMap(row => timerJobs(this.state(row)));
+        return rows.flatMap(row => this.forRoom(row.room_id, () => timerJobs(this.state(row)), []));
       }) : [];
-      for (const job of jobs) await this.runTimer(job);
+      for (const job of jobs) await this.forRoomAsync(job.roomId, () => this.runTimer(job), 'STALE');
       // Automated seats are collected the same way as timers: outside the room
       // lock, then applied one at a time under it.
       const seats = await this.database.transaction(async db => {
         await this.rooms.fence(db);
         const rows = (await db.query("SELECT g.*, r.settings FROM app.game_states g JOIN app.rooms r ON r.id=g.room_id WHERE r.status='ACTIVE' AND r.runtime_epoch=$1 ORDER BY g.room_id",[this.rooms.epoch])).rows;
-        return rows.flatMap(row => botJobs(this.state(row), botDifficulty(row.settings)));
+        return rows.flatMap(row => this.forRoom(row.room_id, () => botJobs(this.state(row), botDifficulty(row.settings)), []));
       });
       let botsPending = false;
       for (const job of seats) {
-        const outcome = await this.runBot(job);
+        const outcome = await this.forRoomAsync(job.roomId, () => this.runBot(job), 'STALE');
         botsPending ||= outcome === 'EARLY';
       }
       let clocksRunning = false;
@@ -448,9 +520,12 @@ export class Games {
         const rooms = (await db.query("SELECT * FROM app.rooms WHERE status IN ('ACTIVE','PAUSED') ORDER BY id FOR UPDATE")).rows;
         for (const room of rooms) {
           this.rooms.assertOwnership(room.runtime_epoch);
+          if (this.isIsolated(room.id)) continue;
           const row = (await db.query('SELECT * FROM app.game_states WHERE room_id=$1 FOR UPDATE',[room.id])).rows[0];
-          if (!row) throw new RepairRequired('Missing saved game; repair required');
-          let state = this.state(row); const now = await this.now(db);
+          if (!row) { this.isolate(room.id, 'Missing saved game', 'state'); continue; }
+          const parsed = this.forRoom(room.id, () => this.state(row), null);
+          if (!parsed) continue;
+          let state = parsed; const now = await this.now(db);
           // Manual/recovery pauses require an explicit host resume regardless of
           // presence. Reconnecting phones must not toggle DISCONNECTED here:
           // each toggle otherwise writes state, a log, a receipt and an outbox
@@ -477,12 +552,10 @@ export class Games {
     } catch (error) {
       if (this.unavailable) delay = 1000;
       else if ((error as {code?:string}).code === 'SERVICE_UNAVAILABLE') delay = null; // Lost epoch: retired by fence.
-      else if (error instanceof RepairRequired) {
-        // Never create a replacement state after a corrupt/incompatible persisted row.
-        this.repairRequired = true;
-        for (const sub of this.subscriptions.values()) sub.socket.emit('session.error', safeError('SERVICE_UNAVAILABLE'));
-        console.error('Game recovery requires inspection; saved state was not replaced.');
-      } else delay = 1000;
+      // A damaged saved game no longer reaches here: every call site isolates
+      // its own room and never replaces its state. Anything else is retried
+      // rather than stopping every game.
+      else delay = 1000;
     } finally { this.ticking = false; if (this.wakeRequested) { this.wakeRequested = false; this.wake(); } else if (delay !== null) this.wake(delay); }
   }
   async beforeApplicationShutdown(): Promise<void> {

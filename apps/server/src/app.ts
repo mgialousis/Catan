@@ -6,6 +6,7 @@ import { Server, type ServerOptions } from 'socket.io';
 import { isValid, PROTOCOL_VERSION, RULES_VERSION, MAX_COMMAND_BYTES } from '@island/protocol';
 import { TokenVerifier } from './auth.js';
 import { clientAddress } from './client-address.js';
+import { IngressProbe } from './ingress.js';
 import { Games, type GameFaults } from './games.js';
 import { safeError } from './errors.js';
 import { Rooms } from './rooms.js';
@@ -41,14 +42,16 @@ class ActivityController {
 
 class GameAdapter extends IoAdapter {
   private readonly connections = new WindowLimiter(120);
-  constructor(app: INestApplication, private readonly config: AppConfig) { super(app); }
+  private readonly ingress: IngressProbe;
+  constructor(app: INestApplication, private readonly config: AppConfig) { super(app); this.ingress = new IngressProbe(config.trustedProxyHops); }
   override createIOServer(port: number, options?: ServerOptions): Server {
     return super.createIOServer(port, {
       ...options, path: '/socket.io', transports: ['websocket'],
       maxHttpBufferSize: MAX_COMMAND_BYTES, pingInterval: 25000, pingTimeout: 20000,
       cors: { origin: this.config.origins, credentials: false },
-      allowRequest: (request: { headers: { origin?: string; 'x-forwarded-for'?: string | string[] }; socket: { remoteAddress?: string } }, callback: (error: string | null, allowed: boolean) => void) => {
-        const origin = request.headers.origin;
+      allowRequest: (request: { headers: Record<string, string | string[] | undefined>; socket: { remoteAddress?: string } }, callback: (error: string | null, allowed: boolean) => void) => {
+        this.ingress.observe(request.socket.remoteAddress, request.headers);
+        const origin = request.headers.origin as string | undefined;
         const allowed = (!origin || this.config.origins.includes(origin)) && this.connections.allow(clientAddress(request.socket.remoteAddress, request.headers['x-forwarded-for'], this.config.trustedProxyHops));
         callback(allowed ? null : 'Connection rejected', allowed);
       },

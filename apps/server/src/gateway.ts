@@ -28,6 +28,10 @@ export class WindowLimiter {
 @WebSocketGateway({ namespace: '/game' })
 export class GameGateway {
   private readonly commands = new WindowLimiter(120);
+  // Fairness is per person. The address-keyed limit ahead of the handshake
+  // cannot tell players apart behind a shared proxy, so one client's reconnect
+  // loop is stopped here, by identity, without touching anybody else.
+  private readonly connectionsPerUser = new WindowLimiter(30);
   private readonly invitations = new WindowLimiter(20);
   private readonly invitationIps = new WindowLimiter(100);
   constructor(@Inject(TokenVerifier) private readonly auth: TokenVerifier, @Inject(Rooms) private readonly rooms: Rooms, @Inject(Games) private readonly games: Games, @Inject('APP_CONFIG') private readonly config: AppConfig) {}
@@ -40,6 +44,7 @@ export class GameGateway {
           throw Object.assign(new Error('Connection rejected'), { data: safeError(code) });
         }
         const identity = await this.auth.verify(socket.handshake.auth.accessToken);
+        if (!this.connectionsPerUser.allow(identity.userId)) throw Object.assign(new Error('Connection rejected'), { data: safeError('RATE_LIMITED') });
         await this.rooms.ready();
         socket.data.identity = identity;
         socket.data.accessToken = socket.handshake.auth.accessToken;
@@ -87,7 +92,10 @@ export class GameGateway {
       socket.data.identity = identity;
       socket.data.accessToken = payload.accessToken;
       this.expireAt(socket, identity);
-      await this.rooms.subscribe(socket);
+      // The token is good by here. A game that cannot be loaded is not an auth
+      // failure: reporting it as one made the client refresh again, meet the
+      // same game, and loop against the token endpoint.
+      await this.rooms.subscribe(socket).catch(() => socket.emit('session.error', safeError('SERVICE_UNAVAILABLE')));
       return { status: 'ACCEPTED', serverTime: new Date().toISOString() };
     } catch (error) {
       socket.emit('session.error', safeError(error instanceof AuthFailure ? error.code : 'UNAUTHENTICATED'));
