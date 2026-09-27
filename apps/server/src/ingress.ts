@@ -47,7 +47,9 @@ export function describeIngress(peer: string | undefined, headers: Headers): Ing
   const edgeClientAt: IngressShape['edgeClientAt'] = {};
   for (const name of EDGE_HEADERS) {
     const value = headers[name];
-    if (typeof value === 'string' && value.trim()) edgeClientAt[name] = hops.indexOf(unmapped(value));
+    // The rightmost match is the entry a proxy appended. A client can prepend
+    // anything it likes to X-Forwarded-For, including its own address.
+    if (typeof value === 'string' && value.trim()) edgeClientAt[name] = hops.lastIndexOf(unmapped(value));
   }
   return { chain: hops.map(classify), edgeClientAt };
 }
@@ -73,9 +75,11 @@ export class IngressProbe {
     const measured = Object.entries(shape.edgeClientAt)
       .map(([name, at]) => at < 0 ? `${name} not in chain` : `${name} at hop ${at} => TRUSTED_PROXY_HOPS=${hopsSelecting(shape.chain.length, at)}`);
     this.log(`Ingress shape [${shape.chain.join(', ')}]${measured.length ? `; ${measured.join('; ')}` : ''} (configured ${this.configuredHops}).`);
-    // Exactly the address the limiters use, so the warning cannot disagree with them.
+    // Exactly the address the limiters use, so the warning cannot disagree with
+    // them. A loopback peer is not exempt: on Render the proxy itself arrives
+    // over loopback. Local development carries no public hop, so stays quiet.
     const keyed = classify(clientAddress(peer, headers['x-forwarded-for'], this.configuredHops));
-    if (keyed !== 'public' && keyed !== 'loopback' && shape.chain.includes('public')) {
+    if (keyed !== 'public' && shape.chain.includes('public')) {
       this.log(`Ingress warning: TRUSTED_PROXY_HOPS=${this.configuredHops} keys per-IP limits on a ${keyed} hop, so every client behind it shares one budget.`);
     }
   }

@@ -22,9 +22,14 @@ services:
         sync: false
       - key: WEB_ORIGINS
         sync: false
-      # Leave unset/zero until actual ingress forwarding is measured.
+      # Measured 2026-09-27 with the ingress probe (apps/server/src/ingress.ts):
+      # Render's proxy reaches the app over loopback and appends the client to
+      # X-Forwarded-For, where both cf-connecting-ip and true-client-ip sit at
+      # the last entry. A forged X-Forwarded-For stays in front of it, so one hop
+      # selects the real client and ignores the forgery. Zero keyed every player
+      # to the loopback address. Re-measure if the ingress path changes.
       - key: TRUSTED_PROXY_HOPS
-        value: "0"
+        value: "1"
   - type: web
     name: island-table-web
     runtime: static

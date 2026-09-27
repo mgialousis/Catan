@@ -26,6 +26,11 @@ test('a chain is described by shape, with the edge client located in it', () => 
   // An edge header naming an address the chain does not contain is reported, not guessed at.
   assert.equal(describeIngress('10.0.0.5', { 'cf-connecting-ip': '203.0.113.7' }).edgeClientAt['cf-connecting-ip'], -1);
   assert.deepEqual(describeIngress('127.0.0.1', {}).chain, ['loopback']);
+  // A client prepending its own address must not move the measured position:
+  // the entry the proxy appended is the rightmost one.
+  const spoofed = describeIngress('10.0.0.5', { 'x-forwarded-for': '203.0.113.7, 203.0.113.7, 198.51.100.9', 'cf-connecting-ip': '203.0.113.7' });
+  assert.equal(spoofed.edgeClientAt['cf-connecting-ip'], 1);
+  assert.equal(hopsSelecting(spoofed.chain.length, 1), 2, 'still two hops, exactly as without the prepended entry');
 });
 
 // The number the probe reports has to be the number that works: feeding it to
@@ -59,6 +64,20 @@ test('the probe logs each shape once, bounded, and never an address', () => {
   for (let i = 0; i < 40; i++) probe.observe('10.0.0.5', { 'x-forwarded-for': Array(i + 1).fill('203.0.113.7').join(', ') });
   assert.ok(lines.filter(l => l.startsWith('Ingress shape')).length <= 16);
   for (const line of lines) assert.doesNotMatch(line, /\d+\.\d+\.\d+\.\d+|::/, `an address reached the log: ${line}`);
+});
+
+// Measured on Render, 27 September: its proxy reaches the app over loopback
+// and appends the client, so zero hops keyed every player to 127.0.0.1.
+test('a proxy arriving over loopback is warned about, and one hop fixes it', () => {
+  const measured = ['127.0.0.1', { 'x-forwarded-for': '203.0.113.7', 'cf-connecting-ip': '203.0.113.7' }];
+  const zero = [];
+  new IngressProbe(0, line => zero.push(line)).observe(...measured);
+  assert.match(zero.join('\n'), /Ingress warning: TRUSTED_PROXY_HOPS=0 keys per-IP limits on a loopback hop/);
+  const one = [];
+  new IngressProbe(1, line => one.push(line)).observe(...measured);
+  assert.equal(one.filter(l => l.startsWith('Ingress warning')).length, 0);
+  // A client forging its own entry is ignored: one hop takes the entry the proxy appended.
+  assert.equal(clientAddress('127.0.0.1', '192.0.2.123, 203.0.113.7', 1), '203.0.113.7');
 });
 
 test('the right hop count raises no warning', () => {
