@@ -1671,25 +1671,40 @@ class _GameScreenState extends ConsumerState<GameScreen>
 }
 
 /// Explicit give/receive composition, bank exchange and responses to open offers.
-class _TradeSheet extends StatefulWidget {
+class _TradeSheet extends ConsumerStatefulWidget {
   const _TradeSheet({required this.snapshot, required this.controller});
+
+  /// The table when the sheet opened. The live table takes over from it.
   final GameSnapshot snapshot;
   final GameController controller;
   @override
-  State<_TradeSheet> createState() => _TradeSheetState();
+  ConsumerState<_TradeSheet> createState() => _TradeSheetState();
 }
 
-class _TradeSheetState extends State<_TradeSheet> {
+class _TradeSheetState extends ConsumerState<_TradeSheet> {
   final give = {for (final resource in resourceTypes) resource: 0};
   final receive = {for (final resource in resourceTypes) resource: 0};
   String? target;
+
+  /// Set when the turn moved on and the offer's recipient had to change with it.
+  String? redirectedTo;
+
+  /// Why the last send did not go through, shown until the next attempt.
+  String? refusal;
+  bool sending = false;
+
+  /// The table as it is now. The sheet used to keep the one it opened with, so
+  /// any move elsewhere -- constant in a bot game -- made the trade stale, and
+  /// it was thrown away on send. Refreshed on every build, which is also what
+  /// the player is looking at when they press a button.
+  late GameSnapshot s = widget.snapshot;
+
   @override
   void initState() {
     super.initState();
     if (!s.active) target = s.public['activePlayerId'] as String;
   }
 
-  GameSnapshot get s => widget.snapshot;
   int get giving => give.values.fold(0, (a, b) => a + b);
   int get receiving => receive.values.fold(0, (a, b) => a + b);
   bool get overlaps =>
@@ -1698,15 +1713,75 @@ class _TradeSheetState extends State<_TradeSheet> {
       giving > 0 &&
       receiving > 0 &&
       !overlaps &&
+      closed == null &&
+      !sending &&
       resourceTypes.every((r) => give[r]! <= s.stock[r]!);
 
+  /// Every trade needs the active player to be building and trading.
+  String? get closed {
+    if (s.phase == 'ACTION') return null;
+    final active = s.public['activePlayerId'] as String;
+    final who = s.active ? 'you have' : '${s.name(active)} has';
+    return switch (s.phase) {
+      'AWAIT_ROLL' => 'Trading opens once $who rolled.',
+      'DISCARD_REQUIRED' => 'Trading reopens once the discards are made.',
+      'ROBBER_MOVE' ||
+      'ROBBER_VICTIM' => 'Trading reopens once the robber has moved.',
+      'ROAD_BUILDING' => 'Trading reopens once the free roads are placed.',
+      'COMPLETE' => 'The game is over.',
+      _ => 'Trading opens once the game is under way.',
+    };
+  }
+
+  /// Whom an offer may go to right now: anyone on your turn, otherwise only the
+  /// player whose turn it is.
+  List<String?> get recipients => [
+    if (s.active) null,
+    for (final player in s.orderedPlayers)
+      if (player['id'] != s.playerId &&
+          (s.active || player['id'] == s.public['activePlayerId']))
+        player['id'] as String,
+  ];
+
+  /// Sends, and closes only once the table has taken it. A refusal leaves the
+  /// trade exactly as composed, with the reason, to adjust rather than rebuild.
   Future<void> _send(String type, JsonMap payload) async {
-    Navigator.pop(context);
-    await widget.controller.command(type, payload, s);
+    setState(() {
+      sending = true;
+      refusal = null;
+    });
+    final outcome = await widget.controller.command(type, payload, s);
+    if (!mounted) return;
+    // Unconfirmed is sent and still pending: the table screen owns its retry.
+    if (outcome == CommandOutcome.accepted ||
+        outcome == CommandOutcome.unconfirmed) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      sending = false;
+      refusal =
+          ref.read(gameProvider).message ??
+          'That did not go through. Check the trade and try again.';
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    s = ref.watch(gameProvider).snapshot ?? widget.snapshot;
+    // The turn moved on under the offer. Whoever it went to may no longer be
+    // able to take it, so it follows the turn -- and says so, rather than
+    // quietly sending the same cards to somebody else.
+    final options = recipients;
+    if (!options.contains(target)) {
+      target = options.isEmpty ? null : options.first;
+      redirectedTo = target == null ? null : s.name(target!);
+    }
+    final short = [
+      for (final r in resourceTypes)
+        if (give[r]! > s.stock[r]!)
+          'You hold only ${s.stock[r]} ${words(r)} now.',
+    ];
     final offers = (s.public['trades'] as Map).values
         .cast<Map>()
         .where((t) => t['status'] == 'OPEN')
@@ -1763,26 +1838,29 @@ class _TradeSheetState extends State<_TradeSheet> {
                 ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
+                // Keyed on the choice, so a change the turn forced is shown.
+                key: ValueKey('trade-target-$target'),
                 initialValue: target,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Offer to'),
                 items: [
-                  if (s.active)
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Everyone'),
+                  for (final id in options)
+                    DropdownMenuItem<String?>(
+                      value: id,
+                      child: Text(id == null ? 'Everyone' : s.name(id)),
                     ),
-                  for (final player in s.orderedPlayers)
-                    if (player['id'] != s.playerId &&
-                        (s.active ||
-                            player['id'] == s.public['activePlayerId']))
-                      DropdownMenuItem<String?>(
-                        value: player['id'] as String,
-                        child: Text(player['nickname'] as String),
-                      ),
                 ],
-                onChanged: (value) => setState(() => target = value),
+                onChanged: (value) => setState(() {
+                  target = value;
+                  redirectedTo = null;
+                }),
               ),
+              if (redirectedTo != null)
+                _note(
+                  'Your offer now goes to $redirectedTo: it is their turn.',
+                ),
+              for (final line in short) _note(line),
+              if (closed != null) _note(closed!),
               if (overlaps)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
@@ -1791,6 +1869,7 @@ class _TradeSheetState extends State<_TradeSheet> {
                     style: TextStyle(fontSize: 12),
                   ),
                 ),
+              if (refusal != null) _note(refusal!),
               const SizedBox(height: 12),
               FilledButton(
                 onPressed: !proposable
@@ -1818,9 +1897,10 @@ class _TradeSheetState extends State<_TradeSheet> {
         !mine &&
         (targeted == null || targeted == s.playerId) &&
         (s.active || offer['proposerPlayerId'] == s.public['activePlayerId']);
-    final canPay = resourceTypes.every(
-      (r) => s.stock[r]! >= (offer['receive'][r] as int),
-    );
+    final canPay =
+        closed == null &&
+        !sending &&
+        resourceTypes.every((r) => s.stock[r]! >= (offer['receive'][r] as int));
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(
@@ -1847,7 +1927,10 @@ class _TradeSheetState extends State<_TradeSheet> {
                   child: const Text('Accept'),
                 ),
                 OutlinedButton(
-                  onPressed: (offer['declinedBy'] as List).contains(s.playerId)
+                  onPressed:
+                      sending ||
+                          closed != null ||
+                          (offer['declinedBy'] as List).contains(s.playerId)
                       ? null
                       : () => _send('DECLINE_TRADE', {
                           'offerId': offer['offerId'],
@@ -1858,10 +1941,12 @@ class _TradeSheetState extends State<_TradeSheet> {
               ],
               if (mine)
                 OutlinedButton(
-                  onPressed: () => _send('CANCEL_TRADE', {
-                    'offerId': offer['offerId'],
-                    'offerRevision': offer['revision'],
-                  }),
+                  onPressed: sending || closed != null
+                      ? null
+                      : () => _send('CANCEL_TRADE', {
+                          'offerId': offer['offerId'],
+                          'offerRevision': offer['revision'],
+                        }),
                   child: const Text('Cancel offer'),
                 ),
             ],
@@ -1870,6 +1955,11 @@ class _TradeSheetState extends State<_TradeSheet> {
       ),
     );
   }
+
+  Widget _note(String text) => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Text(text, style: const TextStyle(fontSize: 12)),
+  );
 
   Widget _bank() {
     final giveType = resourceTypes.firstWhere(

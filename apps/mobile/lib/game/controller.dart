@@ -83,6 +83,23 @@ class GameView {
   );
 }
 
+/// What became of a command, so a sheet the player is working in can stay
+/// open when it did not land, instead of losing what they put together.
+enum CommandOutcome {
+  /// The table accepted it.
+  accepted,
+
+  /// The table refused it; the controller's message says why.
+  rejected,
+
+  /// Never sent: the table had moved on, another command was pending, or the
+  /// connection was down. The controller's message says why when it can.
+  notSent,
+
+  /// Sent, but no reply came. It stays pending and is retried as itself.
+  unconfirmed,
+}
+
 class GameController extends Notifier<GameView> {
   late GamePort _port;
   bool _disposed = false;
@@ -239,7 +256,7 @@ class GameController extends Notifier<GameView> {
     await command(type, {key: id});
   }
 
-  Future<void> command(
+  Future<CommandOutcome> command(
     String type, [
     JsonMap payload = const {},
     GameSnapshot? basedOn,
@@ -259,7 +276,7 @@ class GameController extends Notifier<GameView> {
         state.pending != null ||
         state.snapshot!.complete ||
         (!sessionCommand && state.locked)) {
-      return;
+      return CommandOutcome.notSent;
     }
     final s = state.snapshot!;
     if (basedOn != null &&
@@ -271,7 +288,7 @@ class GameController extends Notifier<GameView> {
         message:
             'The table changed while you were choosing. Review it and choose again.',
       );
-      return;
+      return CommandOutcome.notSent;
     }
     final intent = <String, dynamic>{
       'protocolVersion': 1,
@@ -284,23 +301,25 @@ class GameController extends Notifier<GameView> {
     };
     if (!ref.read(protocolProvider).accepts('gameCommand', intent)) {
       state = state.copy(message: 'Check the selected resources and choices.');
-      return;
+      return CommandOutcome.notSent;
     }
     state = state.copy(
       pending: intent,
       clearMessage: true,
       clearSelection: true,
     );
-    await retry();
+    return retry();
   }
 
-  Future<void> retry() async {
-    if (state.pending == null || state.sending || !state.connected) return;
+  Future<CommandOutcome> retry() async {
+    if (state.pending == null || state.sending || !state.connected) {
+      return CommandOutcome.notSent;
+    }
     final intent = state.pending!;
     state = state.copy(sending: true);
     try {
       final ack = await _port.send(intent);
-      if (_disposed) return;
+      if (_disposed) return CommandOutcome.unconfirmed;
       if (ack['commandId'] != intent['commandId']) {
         throw const FormatException('Unmatched reply');
       }
@@ -320,6 +339,7 @@ class GameController extends Notifier<GameView> {
         } else {
           _port.synchronize();
         }
+        return CommandOutcome.accepted;
       } else {
         final error = object(ack['error']);
         state = state.copy(
@@ -328,6 +348,7 @@ class GameController extends Notifier<GameView> {
           message: gameError(error['code'] as String),
         );
         _port.synchronize();
+        return CommandOutcome.rejected;
       }
     } catch (_) {
       if (!_disposed) {
@@ -337,6 +358,7 @@ class GameController extends Notifier<GameView> {
               'Waiting for confirmation. Retry this same action when connected.',
         );
       }
+      return CommandOutcome.unconfirmed;
     }
   }
 }
