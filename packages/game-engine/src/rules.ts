@@ -50,10 +50,46 @@ export function bankRate(state: PublicState, playerId: string, resource: Resourc
   return best;
 }
 
+/**
+ * Road lengths already found, keyed by the network itself: its edges as
+ * endpoint pairs, and which of its corners an opponent holds. That is all the
+ * search reads, so equal keys mean equal lengths -- across states, moves and
+ * games. A move changes the key only for a player whose network it touched:
+ * whoever built the road, or whoever a new settlement cuts off. Only they are
+ * searched again. Everyone else, and every re-check of the same state during
+ * validation, is a lookup. Bounded, and pure: nothing here does I/O.
+ */
+const roadLengths = new Map<string, number>();
+let searches = 0;
+/** How many trail searches have actually run, for tests that pin the saving. */
+export const roadSearchCount = (): number => searches;
+
+function networkKey(state: Pick<PublicState, 'board' | 'buildings'>, playerId: string, edges: readonly EdgeId[]): string {
+  const pairs: string[] = [], corners = new Set<VertexId>();
+  for (const id of edges) {
+    const [a, b] = state.board.edges[id]!.vertexIds;
+    pairs.push(a < b ? `${a}~${b}` : `${b}~${a}`);
+    corners.add(a); corners.add(b);
+  }
+  const held = [...corners].filter(v => { const building = state.buildings[v]; return !!building && building.ownerPlayerId !== playerId; });
+  return `${pairs.sort().join(',')}|${held.sort().join(',')}`;
+}
+
 /** Exact longest edge trail. Revisiting a vertex is legal; reusing an edge is not. */
 export function longestRoad(state: Pick<PublicState, 'board' | 'roads' | 'buildings'>, playerId: string): number {
   const edges = (Object.keys(state.roads) as EdgeId[]).filter(id => state.roads[id]!.ownerPlayerId === playerId);
   if (edges.length > 15) throw new Error('Road supply exceeded');
+  if (!edges.length) return 0;
+  const key = networkKey(state, playerId, edges), known = roadLengths.get(key);
+  if (known !== undefined) return known;
+  const length = searchTrail(state, playerId, edges);
+  if (roadLengths.size >= 4096) roadLengths.clear();
+  roadLengths.set(key, length);
+  return length;
+}
+
+function searchTrail(state: Pick<PublicState, 'board' | 'roads' | 'buildings'>, playerId: string, edges: readonly EdgeId[]): number {
+  searches++;
   const adjacency = new Map<VertexId, { next: VertexId; bit: number }[]>();
   edges.forEach((id, i) => {
     const [a, b] = state.board.edges[id]!.vertexIds;
