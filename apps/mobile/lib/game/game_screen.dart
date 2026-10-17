@@ -1604,10 +1604,17 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
   Future<void> _openTrade(GameSnapshot s) async {
     _closeTradeNotice();
+    // The sheet opens on the root navigator, above the scope that holds this
+    // game (live.dart overrides it below MaterialApp). Hand it this screen's
+    // container, or its live lookup finds no game and the sheet renders empty.
+    final container = ProviderScope.containerOf(context);
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _TradeSheet(snapshot: s, controller: _controller),
+      builder: (context) => UncontrolledProviderScope(
+        container: container,
+        child: _TradeSheet(snapshot: s, controller: _controller),
+      ),
     );
   }
 

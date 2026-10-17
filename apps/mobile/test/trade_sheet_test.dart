@@ -1,9 +1,14 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:island_table/core/connection.dart';
+import 'package:island_table/game/controller.dart';
+import 'package:island_table/game/game_screen.dart';
 import 'package:island_table/game/model.dart';
 import 'game_flow_test.dart' show showGame, reveal;
-import 'game_model_test.dart' show uiSnapshot;
+import 'game_model_test.dart' show uiProtocol, uiSnapshot;
+import 'game_test.dart' show FakePort;
 
 // Seats in the fixture, in turn order. The viewer is Noor.
 const mira = '00000000-0000-4000-8000-00000000000a';
@@ -186,4 +191,49 @@ void main() {
     expect(port.commands.single['payload']['targetPlayerId'], theo);
     await t.pumpWidget(const SizedBox());
   });
+
+  // The real app scopes the game below MaterialApp (live.dart), while a bottom
+  // sheet opens on the root navigator above it. The sheet once looked the game
+  // up from where it was opened and found nothing there, so it rendered empty.
+  testWidgets(
+    'the sheet shows its trade options under the app\'s real scoping',
+    (t) async {
+      t.view.physicalSize = const Size(375, 812);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      final port = FakePort();
+      await t.pumpWidget(
+        ProviderScope(
+          overrides: [protocolProvider.overrideWithValue(uiProtocol)],
+          child: MaterialApp(
+            home: ProviderScope(
+              overrides: [
+                gamePortProvider.overrideWithValue(port),
+                gameProvider.overrideWith(GameController.new),
+              ],
+              child: const GameScreen(),
+            ),
+          ),
+        ),
+      );
+      await t.pump();
+      port.emit('connected', true);
+      port.emit('snapshot', uiSnapshot('action'));
+      await t.pumpAndSettle();
+      await openTrade(t, 'Trade');
+      expect(t.takeException(), isNull);
+      expect(find.text('You give'), findsOneWidget);
+      expect(find.byTooltip('One more Lumber'), findsNWidgets(2));
+      expect(propose, findsOneWidget);
+      await compose(t);
+      await t.tap(propose);
+      await t.pump();
+      expect(
+        port.commands.single['type'],
+        'PROPOSE_TRADE',
+        reason: 'it sends through the game it belongs to',
+      );
+      await t.pumpWidget(const SizedBox());
+    },
+  );
 }
